@@ -1,0 +1,102 @@
+{
+  "name": "@plasius/gpu-model-runtime",
+  "version": "0.1.0",
+  "description": "GPU model adapter discovery, loading orchestration, caching, and worker offload.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "audit:eslint": "eslint . --max-warnings=0",
+    "audit:deps": "npm ls --all --omit=optional --omit=peer > /dev/null 2>&1 || true",
+    "audit:npm": "npm audit --audit-level=high --omit=dev",
+    "audit:test": "vitest run --coverage",
+    "lint": "eslint . --max-warnings=0",
+    "prepare": "npm run build",
+    "clean": "rimraf dist",
+    "test:coverage": "vitest run --coverage",
+    "pack:check": "node scripts/verify-public-package.cjs",
+    "prepublishOnly": "npm run build && npm run pack:check"
+  },
+  "keywords": [
+    "schema",
+    "validation",
+    "data-validation",
+    "schema-validation",
+    "typed-schema",
+    "json-schema",
+    "typescript",
+    "typesafe",
+    "runtime-validation",
+    "type-safety",
+    "plasius",
+    "schema-helper",
+    "entity-schema",
+    "domain-modeling",
+    "agnostic",
+    "oss",
+    "frontend",
+    "backend",
+    "portable",
+    "scalability",
+    "monorepo-friendly"
+  ],
+  "author": "Plasius LTD <development@plasius.co.uk>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Plasius-LTD/gpu-model-runtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Plasius-LTD/gpu-model-runtime/issues"
+  },
+  "homepage": "https://github.com/Plasius-LTD/gpu-model-runtime#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
+    "@vitest/coverage-v8": "^4.1.6",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "funding": [
+    {
+      "type": "patreon",
+      "url": "https://www.patreon.com/c/plasiusltd/membership"
+    },
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/Plasius-LTD"
+    }
+  ],
+  "overrides": {
+    "minimatch": "^10.2.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
