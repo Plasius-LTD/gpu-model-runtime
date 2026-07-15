@@ -38,7 +38,11 @@ management.
   released. One caller aborting does not cancel work still required elsewhere.
 - CPU and GPU byte totals are observed separately. Unreferenced resources are
   evicted by lowest LOD priority and least-recent use until both hard limits are
-  satisfied.
+  satisfied. Replacement loading begins only after asynchronous eviction
+  disposal completes.
+- A timed-out or unwanted loader releases its concurrency slot immediately,
+  even when the adapter ignores abort. Late completion remains detached from
+  idle/shutdown waits and its resource is disposed exactly once if it arrives.
 - The loader returns an explicit disposer. Successful resources are disposed
   exactly once, including late completion after cancellation and manager-wide
   shutdown.

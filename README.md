@@ -63,6 +63,8 @@ The manager provides:
 - per-acquisition cancellation without aborting other interested consumers;
 - cancellation of a shared load once every interested consumer has gone away;
 - separate hard CPU/GPU byte budgets and bounded in-flight adapter work;
+- release of timed-out concurrency slots even when an adapter ignores abort;
+- completion of asynchronous eviction disposal before replacement loading;
 - deterministic eviction by lowest retained priority, least-recent use, and
   cache key;
 - exact-once disposal for evicted, failed-integrity, cancelled, timed-out,
@@ -113,7 +115,9 @@ lease.release();
 
 Call `setPriority` and `setPinned` on a live lease as visibility changes. Call
 `shutdown()` when the owning renderer is destroyed; it aborts pending work and
-waits for late adapter results to be disposed.
+disposes resident resources without waiting indefinitely for an adapter that
+ignores abort. If detached adapter work eventually completes, its late resource
+is still disposed exactly once.
 
 Canonical model identity comes from `@plasius/asset-contracts`; this package
 does not define a parallel asset catalog. See

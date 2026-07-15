@@ -153,6 +153,7 @@ interface ResidencyEntry<Resource> {
   retainedPriority: number;
   lastUsed: number;
   abandoned: boolean;
+  loadSlotReleased: boolean;
   waiters: Map<number, AcquisitionWaiter<Resource>>;
   leases: Map<number, LeaseRecord>;
   controller?: AbortController;
@@ -229,6 +230,10 @@ function abortedError(): ModelResidencyError {
   );
 }
 
+function signalIsAborted(signal?: AbortSignal): boolean {
+  return signal?.aborted === true;
+}
+
 /**
  * Content-addressed model cache with bounded work, reference-counted leases,
  * deterministic eviction, and exact-once adapter disposal.
@@ -259,6 +264,7 @@ export class ModelResidencyManager<Resource = unknown> {
   #clock = 1;
   #inFlightLoads = 0;
   #closed = false;
+  #admissionTail: Promise<void> = Promise.resolve();
   #shutdownPromise?: Promise<void>;
 
   constructor(options: ModelResidencyManagerOptions<Resource>) {
@@ -300,37 +306,64 @@ export class ModelResidencyManager<Resource = unknown> {
         options.lod,
         options.partitionId,
       );
-      if (options.signal?.aborted === true) throw abortedError();
+      if (signalIsAborted(options.signal)) throw abortedError();
       this.#metrics.acquireCount += 1;
 
       const existing = this.#entries.get(key);
-      if (existing !== undefined && !existing.abandoned) {
-        this.#metrics.deduplicatedAcquires += 1;
-        if (existing.state === "resident") {
-          this.#metrics.cacheHits += 1;
-          return Promise.resolve(
-            this.#createLease(
-              existing,
-              options.priority,
-              options.pinned ?? false,
-            ),
-          );
-        }
-        return this.#addWaiter(existing, options);
-      }
-      if (existing !== undefined) {
-        return Promise.reject(
-          new ModelResidencyError(
-            "load-timeout",
-            "A stale load for this model key is still finalizing",
-          ),
-        );
-      }
+      if (existing !== undefined) return this.#acquireExisting(existing, options);
+      return this.#scheduleAdmission(key, options);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
 
-      this.#ensureCapacityForReservation(
+  #acquireExisting(
+    entry: ResidencyEntry<Resource>,
+    options: AcquireModelOptions,
+  ): Promise<ModelResidencyLease<Resource>> {
+    this.#metrics.deduplicatedAcquires += 1;
+    if (entry.state === "resident") {
+      this.#metrics.cacheHits += 1;
+      return Promise.resolve(
+        this.#createLease(
+          entry,
+          options.priority,
+          options.pinned ?? false,
+        ),
+      );
+    }
+    return this.#addWaiter(entry, options);
+  }
+
+  #scheduleAdmission(
+    key: string,
+    options: AcquireModelOptions,
+  ): Promise<ModelResidencyLease<Resource>> {
+    let resolveAcquisition!: (lease: ModelResidencyLease<Resource>) => void;
+    let rejectAcquisition!: (reason: unknown) => void;
+    const acquisition = new Promise<ModelResidencyLease<Resource>>(
+      (resolve, reject) => {
+        resolveAcquisition = resolve;
+        rejectAcquisition = reject;
+      },
+    );
+    const admission = this.#admissionTail.then(async () => {
+      if (this.#closed) throw closedError();
+      if (signalIsAborted(options.signal)) throw abortedError();
+      const existing = this.#entries.get(key);
+      if (existing !== undefined) {
+        void this.#acquireExisting(existing, options).then(
+          resolveAcquisition,
+          rejectAcquisition,
+        );
+        return;
+      }
+      await this.#ensureCapacityForReservation(
         options.estimatedCpuBytes,
         options.estimatedGpuBytes,
       );
+      if (this.#closed) throw closedError();
+      if (signalIsAborted(options.signal)) throw abortedError();
       const entry: ResidencyEntry<Resource> = {
         key,
         assetRef: options.assetRef,
@@ -346,16 +379,20 @@ export class ModelResidencyManager<Resource = unknown> {
         retainedPriority: options.priority,
         lastUsed: this.#clock++,
         abandoned: false,
+        loadSlotReleased: true,
         waiters: new Map(),
         leases: new Map(),
       };
       this.#entries.set(key, entry);
-      const acquisition = this.#addWaiter(entry, options);
+      void this.#addWaiter(entry, options).then(
+        resolveAcquisition,
+        rejectAcquisition,
+      );
       this.#pumpQueue();
-      return acquisition;
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    });
+    this.#admissionTail = admission.catch(() => undefined);
+    void admission.catch(rejectAcquisition);
+    return acquisition;
   }
 
   /** Dispose every currently unreferenced, unpinned resident cache entry. */
@@ -369,6 +406,7 @@ export class ModelResidencyManager<Resource = unknown> {
 
   /** Wait until queued/loading work and its resulting disposal have settled. */
   async waitForIdle(): Promise<void> {
+    await this.#admissionTail;
     do {
       this.#pumpQueue();
       const tasks = [...this.#loadTasks];
@@ -605,12 +643,12 @@ export class ModelResidencyManager<Resource = unknown> {
 
   #startLoad(entry: ResidencyEntry<Resource>): void {
     entry.state = "loading";
+    entry.loadSlotReleased = false;
     entry.controller = new AbortController();
     this.#inFlightLoads += 1;
     this.#metrics.loadsStarted += 1;
     if (this.#loadTimeoutMs !== undefined) {
       entry.timeout = setTimeout(() => {
-        if (entry.abandoned) return;
         this.#metrics.loadsTimedOut += 1;
         this.#abandonLoadingEntry(
           entry,
@@ -644,10 +682,8 @@ export class ModelResidencyManager<Resource = unknown> {
         if (entry.timeout !== undefined) clearTimeout(entry.timeout);
         entry.timeout = undefined;
         entry.controller = undefined;
+        this.#releaseLoadSlot(entry);
         entry.loadTask = undefined;
-        this.#inFlightLoads -= 1;
-        this.#loadTasks.delete(task);
-        this.#pumpQueue();
       });
     entry.loadTask = task;
     this.#loadTasks.add(task);
@@ -657,9 +693,8 @@ export class ModelResidencyManager<Resource = unknown> {
     entry: ResidencyEntry<Resource>,
     result: ModelLoadedResource<Resource>,
   ): Promise<void> {
-    if (entry.abandoned || this.#closed || this.#entries.get(entry.key) !== entry) {
+    if (entry.abandoned) {
       await this.#disposeLoaded(result);
-      this.#entries.delete(entry.key);
       return;
     }
 
@@ -688,8 +723,8 @@ export class ModelResidencyManager<Resource = unknown> {
   }
 
   #failLoad(entry: ResidencyEntry<Resource>, error: unknown): void {
-    this.#entries.delete(entry.key);
     if (entry.abandoned) return;
+    this.#entries.delete(entry.key);
     this.#metrics.loadsFailed += 1;
     this.#rejectWaiters(entry, error);
   }
@@ -699,11 +734,22 @@ export class ModelResidencyManager<Resource = unknown> {
     error: ModelResidencyError,
     rejectWaiters: boolean,
   ): void {
-    if (entry.abandoned) return;
     entry.abandoned = true;
     this.#metrics.loadsAborted += 1;
+    if (entry.timeout !== undefined) clearTimeout(entry.timeout);
+    entry.timeout = undefined;
+    this.#entries.delete(entry.key);
     if (rejectWaiters) this.#rejectWaiters(entry, error);
     entry.controller?.abort(error);
+    this.#releaseLoadSlot(entry);
+  }
+
+  #releaseLoadSlot(entry: ResidencyEntry<Resource>): void {
+    if (entry.loadSlotReleased) return;
+    entry.loadSlotReleased = true;
+    this.#inFlightLoads -= 1;
+    this.#loadTasks.delete(entry.loadTask!);
+    this.#pumpQueue();
   }
 
   #rejectWaiters(entry: ResidencyEntry<Resource>, error: unknown): void {
@@ -749,14 +795,17 @@ export class ModelResidencyManager<Resource = unknown> {
     }
   }
 
-  #ensureCapacityForReservation(cpuBytes: number, gpuBytes: number): void {
+  async #ensureCapacityForReservation(
+    cpuBytes: number,
+    gpuBytes: number,
+  ): Promise<void> {
     if (
       cpuBytes > this.#budget.maxCpuBytes ||
       gpuBytes > this.#budget.maxGpuBytes
     ) {
       throw this.#budgetError();
     }
-    const usage = this.#totalAccountedBytes();
+    let usage = this.#totalAccountedBytes();
     for (const candidate of this.#evictionCandidates()) {
       if (
         usage.cpu + cpuBytes <= this.#budget.maxCpuBytes &&
@@ -764,9 +813,8 @@ export class ModelResidencyManager<Resource = unknown> {
       ) {
         return;
       }
-      usage.cpu -= candidate.loaded!.cpuBytes;
-      usage.gpu -= candidate.loaded!.gpuBytes;
-      void this.#evict(candidate);
+      await this.#evict(candidate);
+      usage = this.#totalAccountedBytes();
     }
     if (
       usage.cpu + cpuBytes > this.#budget.maxCpuBytes ||

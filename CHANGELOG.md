@@ -13,8 +13,8 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - Added `ModelResidencyManager` with content-addressed LOD/partition keys,
     reference-counted leases, abort-aware shared loading, hard CPU/GPU budgets,
     deterministic eviction, bounded concurrency, metrics, and exact disposal.
-  - Added concurrent, cancellation, integrity, timeout, budget, queue-order,
-    shutdown, and 2,400-acquisition residency stress tests.
+  - Added concurrent, cancellation, integrity, timeout/retry, async-disposal,
+    budget, queue-order, shutdown, and 2,400-acquisition residency stress tests.
   - Added ADR-0006 for the canonical model residency boundary.
 
 - **Changed**

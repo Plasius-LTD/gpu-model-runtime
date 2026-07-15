@@ -132,7 +132,7 @@ describe("ModelResidencyManager", () => {
 
     const firstPromise = manager.acquire(acquireOptions(ref));
     const secondPromise = manager.acquire(acquireOptions(ref, { priority: 5 }));
-    expect(load).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     gate.resolve(loaded(ref, "shared", dispose));
 
     const [first, second] = await Promise.all([firstPromise, secondPromise]);
@@ -202,6 +202,7 @@ describe("ModelResidencyManager", () => {
       acquireOptions(ref, { signal: secondAbort.signal }),
     );
 
+    await vi.waitFor(() => expect(loaderSignal).toBeDefined());
     firstAbort.abort();
     secondAbort.abort();
     await expect(first).rejects.toMatchObject({ code: "acquire-aborted" });
@@ -230,15 +231,17 @@ describe("ModelResidencyManager", () => {
     const queuedAbort = new AbortController();
 
     const active = manager.acquire(acquireOptions(activeRef));
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     const cancelled = manager.acquire(
       acquireOptions(cancelledRef, { signal: queuedAbort.signal }),
     );
+    await vi.waitFor(() => expect(manager.snapshot().queuedLoads).toBe(1));
     queuedAbort.abort();
     await expect(cancelled).rejects.toMatchObject({ code: "acquire-aborted" });
     expect(manager.snapshot()).toMatchObject({ inFlightLoads: 1, queuedLoads: 0 });
 
     const queuedAtShutdown = manager.acquire(acquireOptions(shutdownRef));
-    expect(manager.snapshot().queuedLoads).toBe(1);
+    await vi.waitFor(() => expect(manager.snapshot().queuedLoads).toBe(1));
     const shutdown = manager.shutdown();
     await expect(active).rejects.toMatchObject({ code: "manager-closed" });
     await expect(queuedAtShutdown).rejects.toMatchObject({ code: "manager-closed" });
@@ -386,6 +389,140 @@ describe("ModelResidencyManager", () => {
     await manager.shutdown();
   });
 
+  it("awaits async eviction disposal before starting a replacement load", async () => {
+    const resident = assetRef("34");
+    const replacement = assetRef("35");
+    const disposal = deferred<void>();
+    const starts: string[] = [];
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 40, maxGpuBytes: 40, maxInFlightLoads: 1 },
+      load: async ({ assetRef: ref }) => {
+        starts.push(ref.assetId);
+        return loaded(
+          ref,
+          ref.assetId,
+          ref.contentHash === resident.contentHash
+            ? () => disposal.promise
+            : vi.fn(),
+          40,
+          40,
+        );
+      },
+    });
+
+    const residentLease = await manager.acquire(
+      acquireOptions(resident, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+      }),
+    );
+    residentLease.release();
+    const replacementAcquire = manager.acquire(
+      acquireOptions(replacement, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+      }),
+    );
+    await vi.waitFor(() => expect(manager.snapshot().disposals).toBe(1));
+    expect(starts).toEqual([resident.assetId]);
+    expect(manager.snapshot().inFlightLoads).toBe(0);
+
+    disposal.resolve();
+    const replacementLease = await replacementAcquire;
+    expect(starts).toEqual([resident.assetId, replacement.assetId]);
+    replacementLease.release();
+    await manager.shutdown();
+  });
+
+  it("cancels admission after an async eviction when its signal aborts", async () => {
+    const resident = assetRef("36");
+    const replacement = assetRef("37");
+    const disposal = deferred<void>();
+    const abort = new AbortController();
+    const starts: string[] = [];
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 40, maxGpuBytes: 40, maxInFlightLoads: 1 },
+      load: async ({ assetRef: ref }) => {
+        starts.push(ref.assetId);
+        return loaded(
+          ref,
+          ref.assetId,
+          ref.contentHash === resident.contentHash
+            ? () => disposal.promise
+            : vi.fn(),
+          40,
+          40,
+        );
+      },
+    });
+    const residentLease = await manager.acquire(
+      acquireOptions(resident, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+      }),
+    );
+    residentLease.release();
+    const replacementAcquire = manager.acquire(
+      acquireOptions(replacement, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+        signal: abort.signal,
+      }),
+    );
+    await vi.waitFor(() => expect(manager.snapshot().disposals).toBe(1));
+    abort.abort();
+    disposal.resolve();
+
+    await expect(replacementAcquire).rejects.toMatchObject({
+      code: "acquire-aborted",
+    });
+    expect(starts).toEqual([resident.assetId]);
+    await manager.shutdown();
+  });
+
+  it("fails admission closed after shutdown interrupts an async eviction", async () => {
+    const resident = assetRef("38");
+    const replacement = assetRef("39");
+    const disposal = deferred<void>();
+    const load = vi.fn(async ({ assetRef: ref }: ModelLoadRequest) =>
+      loaded(
+        ref,
+        ref.assetId,
+        ref.contentHash === resident.contentHash
+          ? () => disposal.promise
+          : vi.fn(),
+        40,
+        40,
+      ),
+    );
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 40, maxGpuBytes: 40, maxInFlightLoads: 1 },
+      load,
+    });
+    const residentLease = await manager.acquire(
+      acquireOptions(resident, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+      }),
+    );
+    residentLease.release();
+    const replacementAcquire = manager.acquire(
+      acquireOptions(replacement, {
+        estimatedCpuBytes: 40,
+        estimatedGpuBytes: 40,
+      }),
+    );
+    await vi.waitFor(() => expect(manager.snapshot().disposals).toBe(1));
+    const shutdown = manager.shutdown();
+    disposal.resolve();
+
+    await expect(replacementAcquire).rejects.toMatchObject({
+      code: "manager-closed",
+    });
+    await shutdown;
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it("never evicts referenced or pinned entries to admit an over-budget load", async () => {
     const manager = new ModelResidencyManager<TestResource>({
       budget: { maxCpuBytes: 64, maxGpuBytes: 64, maxInFlightLoads: 1 },
@@ -431,6 +568,7 @@ describe("ModelResidencyManager", () => {
     const first = manager.acquire(acquireOptions(refs[0]!));
     const low = manager.acquire(acquireOptions(refs[1]!, { priority: 1 }));
     const high = manager.acquire(acquireOptions(refs[2]!, { priority: 9 }));
+    await vi.waitFor(() => expect(starts).toHaveLength(1));
     expect(starts).toEqual([refs[0]!.assetId]);
     expect(manager.snapshot()).toMatchObject({ inFlightLoads: 1, queuedLoads: 2 });
 
@@ -451,50 +589,93 @@ describe("ModelResidencyManager", () => {
     await manager.shutdown();
   });
 
+  it("keeps insertion order for queued loads with equal priority", async () => {
+    const refs = [assetRef("81"), assetRef("82"), assetRef("83")];
+    const gates = refs.map(() => deferred<ModelLoadedResource<TestResource>>());
+    const starts: string[] = [];
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 256, maxGpuBytes: 256, maxInFlightLoads: 1 },
+      load: ({ assetRef: ref }) => {
+        const index = refs.findIndex(
+          (candidate) => candidate.contentHash === ref.contentHash,
+        );
+        starts.push(ref.assetId);
+        return gates[index]!.promise;
+      },
+    });
+    const acquisitions = refs.map((ref) =>
+      manager.acquire(acquireOptions(ref, { priority: 4 })),
+    );
+    await vi.waitFor(() => expect(starts).toHaveLength(1));
+    gates[0]!.resolve(loaded(refs[0]!, "first", vi.fn()));
+    const first = await acquisitions[0]!;
+    await vi.waitFor(() => expect(starts).toHaveLength(2));
+    expect(starts[1]).toBe(refs[1]!.assetId);
+    gates[1]!.resolve(loaded(refs[1]!, "second", vi.fn()));
+    const second = await acquisitions[1]!;
+    await vi.waitFor(() => expect(starts).toHaveLength(3));
+    gates[2]!.resolve(loaded(refs[2]!, "third", vi.fn()));
+    const third = await acquisitions[2]!;
+
+    first.release();
+    second.release();
+    third.release();
+    await manager.shutdown();
+  });
+
   it("times out loaders, aborts them, and disposes ignored late completion", async () => {
     const ref = assetRef("9");
     const gate = deferred<ModelLoadedResource<TestResource>>();
-    const dispose = vi.fn();
+    const lateDispose = vi.fn();
+    const retryDispose = vi.fn();
     let loaderSignal: AbortSignal | undefined;
+    let attempt = 0;
     const manager = new ModelResidencyManager<TestResource>({
       budget: { maxCpuBytes: 128, maxGpuBytes: 128, maxInFlightLoads: 1 },
       loadTimeoutMs: 10,
       load: ({ signal }) => {
+        attempt += 1;
         loaderSignal = signal;
-        return gate.promise;
+        return attempt === 1
+          ? gate.promise
+          : Promise.resolve(loaded(ref, "retry", retryDispose));
       },
     });
 
     const acquisition = manager.acquire(acquireOptions(ref));
     await expect(acquisition).rejects.toMatchObject({ code: "load-timeout" });
     expect(loaderSignal?.aborted).toBe(true);
-    await expect(manager.acquire(acquireOptions(ref))).rejects.toMatchObject({
-      code: "load-timeout",
-    });
-    gate.resolve(loaded(ref, "too-late", dispose));
+    expect(manager.snapshot().inFlightLoads).toBe(0);
+    const retryLease = await manager.acquire(acquireOptions(ref));
+    expect(retryLease.resource.id).toBe("retry");
     await manager.waitForIdle();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    gate.resolve(loaded(ref, "too-late", lateDispose));
+    await vi.waitFor(() => expect(lateDispose).toHaveBeenCalledTimes(1));
+    retryLease.release();
+    await manager.shutdown();
+    expect(retryDispose).toHaveBeenCalledTimes(1);
   });
 
   it("does not double-count a timeout or failure after an aborted load", async () => {
     const ref = assetRef("90");
     const gate = deferred<ModelLoadedResource<TestResource>>();
     const abort = new AbortController();
+    const load = vi.fn(() => gate.promise);
     const manager = new ModelResidencyManager<TestResource>({
       budget: { maxCpuBytes: 128, maxGpuBytes: 128, maxInFlightLoads: 1 },
-      loadTimeoutMs: 10,
-      load: () => gate.promise,
+      loadTimeoutMs: 1_000,
+      load,
     });
 
     const acquisition = manager.acquire(
       acquireOptions(ref, { signal: abort.signal }),
     );
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     abort.abort();
     await expect(acquisition).rejects.toMatchObject({ code: "acquire-aborted" });
-    const shutdown = manager.shutdown();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await manager.shutdown();
     gate.reject(new Error("late adapter failure"));
-    await shutdown;
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(manager.snapshot()).toMatchObject({
       loadsAborted: 1,
@@ -531,6 +712,21 @@ describe("ModelResidencyManager", () => {
     await expect(manager.acquire(acquireOptions(ref))).rejects.toMatchObject({
       code: "manager-closed",
     });
+  });
+
+  it("rejects an admission when shutdown wins the initial scheduling turn", async () => {
+    const ref = assetRef("911");
+    const load = vi.fn(async () => loaded(ref, "unused", vi.fn()));
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 128, maxGpuBytes: 128, maxInFlightLoads: 1 },
+      load,
+    });
+
+    const acquisition = manager.acquire(acquireOptions(ref));
+    const shutdown = manager.shutdown();
+    await expect(acquisition).rejects.toMatchObject({ code: "manager-closed" });
+    await shutdown;
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("validates hard limits and records disposer failures without retrying disposal", async () => {
@@ -682,22 +878,26 @@ describe("ModelResidencyManager", () => {
     const residentDispose = vi.fn();
     const pendingDispose = vi.fn();
     const pending = deferred<ModelLoadedResource<TestResource>>();
+    const load = vi.fn(({ assetRef: ref }: ModelLoadRequest) =>
+      ref.contentHash === residentRef.contentHash
+        ? Promise.resolve(loaded(ref, "resident", residentDispose))
+        : pending.promise,
+    );
     const manager = new ModelResidencyManager<TestResource>({
       budget: { maxCpuBytes: 256, maxGpuBytes: 256, maxInFlightLoads: 2 },
-      load: ({ assetRef: ref }) =>
-        ref.contentHash === residentRef.contentHash
-          ? Promise.resolve(loaded(ref, "resident", residentDispose))
-          : pending.promise,
+      load,
     });
     const residentLease = await manager.acquire(acquireOptions(residentRef));
+    await vi.waitFor(() => expect(manager.snapshot().inFlightLoads).toBe(0));
     const pendingAcquire = manager.acquire(acquireOptions(pendingRef));
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     const shutdown = manager.shutdown();
 
     await expect(pendingAcquire).rejects.toMatchObject({ code: "manager-closed" });
     pending.resolve(loaded(pendingRef, "late-shutdown", pendingDispose));
     await shutdown;
+    await vi.waitFor(() => expect(pendingDispose).toHaveBeenCalledTimes(1));
     expect(residentDispose).toHaveBeenCalledTimes(1);
-    expect(pendingDispose).toHaveBeenCalledTimes(1);
     residentLease.release();
     await manager.shutdown();
     expect(residentDispose).toHaveBeenCalledTimes(1);
