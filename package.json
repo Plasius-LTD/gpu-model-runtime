@@ -98,5 +98,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "dependencies": {
+    "@plasius/asset-contracts": "^0.3.1"
   }
 }

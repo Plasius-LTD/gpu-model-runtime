@@ -11,3 +11,5 @@ export const packageBootstrap = Object.freeze({
   featureFlag: "gpu.model.conversion.enabled",
   status: "runtime",
 } as const);
+
+export * from "./model-residency.js";

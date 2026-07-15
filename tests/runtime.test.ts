@@ -7,7 +7,11 @@ import {
   ModelRuntime,
   sha256Hex,
   type AdapterRegistration,
+  type AdapterLoadResult,
   type ModelAdapter,
+  type ModelSource,
+  type WorkerDispatcher,
+  type WorkerLoadRequest,
   verifyIntegrity,
 } from "../src/index.js";
 
@@ -155,9 +159,19 @@ describe("ModelRuntime", () => {
   });
 
   it("delegates to a worker only when requested and supported", async () => {
-    const workerDispatch = vi.fn(async (request) => ({
-      canonicalModel: { name: request.context.execution },
-    }));
+    let workerDispatchCount = 0;
+    const workerDispatcher: WorkerDispatcher = {
+      async dispatch<TCanonicalModel, TRendererReady = unknown>(
+        request: WorkerLoadRequest,
+      ): Promise<AdapterLoadResult<TCanonicalModel, TRendererReady>> {
+        workerDispatchCount += 1;
+        return {
+          canonicalModel: {
+            name: request.context.execution,
+          } as TCanonicalModel,
+        };
+      },
+    };
     const registry = new AdapterRegistry().register({
       formatId: "fixture",
       sniff: () => true,
@@ -170,7 +184,7 @@ describe("ModelRuntime", () => {
     });
     const runtime = new ModelRuntime({
       registry,
-      workerDispatcher: { dispatch: workerDispatch },
+      workerDispatcher,
       dependencies: { hashBytes: deterministicHash },
     });
 
@@ -180,7 +194,7 @@ describe("ModelRuntime", () => {
     });
 
     expect(result.canonicalModel).toEqual({ name: "worker" });
-    expect(workerDispatch).toHaveBeenCalledOnce();
+    expect(workerDispatchCount).toBe(1);
   });
 
   it("fails closed when a file source has no file reader", async () => {
@@ -282,7 +296,7 @@ describe("ModelRuntime", () => {
           },
         }),
       },
-    ];
+    ] satisfies readonly [ModelSource, ModelSource, ModelSource, ModelSource];
 
     await expect(runtime.loadModel(sources[0], { useCache: false })).resolves.toMatchObject({ canonicalModel: [1, 2] });
     await expect(runtime.loadModel(sources[1], { useCache: false })).resolves.toMatchObject({ canonicalModel: [3, 4] });
