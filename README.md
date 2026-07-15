@@ -1,10 +1,9 @@
 # @plasius/gpu-model-runtime
 
-Adapter discovery, source resolution, loading orchestration, caching, and worker offload.
+Adapter discovery, source resolution, loading orchestration, bounded residency,
+and worker offload.
 
 This repository is the dedicated package boundary defined by ADR 0094.
-
-## Bootstrap status
 
 The runtime owns orchestration only. Canonical model documents, diagnostics, and
 renderer-specific data remain owned by the corresponding `@plasius/gpu-model-*`
@@ -51,9 +50,79 @@ result.canonicalModel;
 result.rendererReady;
 ```
 
+## Model residency
+
+`ModelResidencyManager` owns the lifetime of promoted runtime models shared by
+world tiles, zones, editor previews, and other GPU consumers. Cache identity is
+the canonical `ModelAssetRef.contentHash` plus LOD and optional partition ID, so
+many spatial instances can share one adapter load and one GPU resource.
+
+The manager provides:
+
+- reference-counted, idempotent leases;
+- per-acquisition cancellation without aborting other interested consumers;
+- cancellation of a shared load once every interested consumer has gone away;
+- separate hard CPU/GPU byte budgets and bounded in-flight adapter work;
+- deterministic eviction by lowest retained priority, least-recent use, and
+  cache key;
+- exact-once disposal for evicted, failed-integrity, cancelled, timed-out,
+  late-completing, and shutdown resources; and
+- immutable accounting metrics for runtime diagnostics.
+
+Loaders remain adapter-driven. The package does not eagerly import any model
+format implementation.
+
+```ts
+import { ModelResidencyManager } from "@plasius/gpu-model-runtime";
+
+const models = new ModelResidencyManager({
+  budget: {
+    maxCpuBytes: 256 * 1024 * 1024,
+    maxGpuBytes: 384 * 1024 * 1024,
+    maxInFlightLoads: 4,
+  },
+  load: async ({ assetRef, lod, partitionId, signal }) => {
+    const loaded = await modelAdapter.load({
+      assetRef,
+      lod,
+      partitionId,
+      signal,
+    });
+    return {
+      resource: loaded.resource,
+      contentHash: loaded.contentHash,
+      cpuBytes: loaded.cpuBytes,
+      gpuBytes: loaded.gpuBytes,
+      dispose: loaded.dispose,
+    };
+  },
+});
+
+const lease = await models.acquire({
+  assetRef,
+  lod: 0,
+  priority: 100,
+  estimatedCpuBytes: 4 * 1024 * 1024,
+  estimatedGpuBytes: 12 * 1024 * 1024,
+  signal,
+});
+
+render(lease.resource);
+lease.release();
+```
+
+Call `setPriority` and `setPinned` on a live lease as visibility changes. Call
+`shutdown()` when the owning renderer is destroyed; it aborts pending work and
+waits for late adapter results to be disposed.
+
+Canonical model identity comes from `@plasius/asset-contracts`; this package
+does not define a parallel asset catalog. See
+[`docs/adrs/adr-0006-content-addressed-model-residency.md`](docs/adrs/adr-0006-content-addressed-model-residency.md).
+
 ## Rollout
 
 - Feature flag: gpu.model.conversion.enabled
+- Origin-shard integration flag: world.persistent-atlas.enabled
 - Capability: none for this package-only layer
 - Rollback: disable the feature flag and keep the published package version pinned to the last validated release
 
