@@ -98,6 +98,28 @@ describe("ModelResidencyManager", () => {
     expect(() => createModelResidencyKey(ref, 4 as 0)).toThrow(/lod/);
   });
 
+  it("forwards partition identity through loading and the acquired lease", async () => {
+    const ref = assetRef("a0");
+    const load = vi.fn(async (request: ModelLoadRequest) =>
+      loaded(ref, request.partitionId ?? "missing", vi.fn()),
+    );
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 128, maxGpuBytes: 128, maxInFlightLoads: 1 },
+      load,
+    });
+
+    const lease = await manager.acquire(
+      acquireOptions(ref, { partitionId: "cell-4-7" }),
+    );
+    expect(load).toHaveBeenCalledWith(
+      expect.objectContaining({ partitionId: "cell-4-7" }),
+    );
+    expect(lease.partitionId).toBe("cell-4-7");
+    expect(lease.resource.id).toBe("cell-4-7");
+    lease.release();
+    await manager.shutdown();
+  });
+
   it("deduplicates concurrent loads and reference-counts idempotent leases", async () => {
     const ref = assetRef("b");
     const gate = deferred<ModelLoadedResource<TestResource>>();
@@ -336,6 +358,34 @@ describe("ModelResidencyManager", () => {
     );
   });
 
+  it("uses least-recent residency when eviction priorities are equal", async () => {
+    const disposed: string[] = [];
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 80, maxGpuBytes: 80, maxInFlightLoads: 1 },
+      load: async ({ assetRef: ref }) =>
+        loaded(ref, ref.assetId, () => disposed.push(ref.assetId), 40, 40),
+    });
+    const oldest = assetRef("31");
+    const newest = assetRef("32");
+    const incoming = assetRef("33");
+
+    const oldestLease = await manager.acquire(
+      acquireOptions(oldest, { estimatedCpuBytes: 40, estimatedGpuBytes: 40 }),
+    );
+    oldestLease.release();
+    const newestLease = await manager.acquire(
+      acquireOptions(newest, { estimatedCpuBytes: 40, estimatedGpuBytes: 40 }),
+    );
+    newestLease.release();
+    const incomingLease = await manager.acquire(
+      acquireOptions(incoming, { estimatedCpuBytes: 40, estimatedGpuBytes: 40 }),
+    );
+
+    expect(disposed).toEqual([oldest.assetId]);
+    incomingLease.release();
+    await manager.shutdown();
+  });
+
   it("never evicts referenced or pinned entries to admit an over-budget load", async () => {
     const manager = new ModelResidencyManager<TestResource>({
       budget: { maxCpuBytes: 64, maxGpuBytes: 64, maxInFlightLoads: 1 },
@@ -424,6 +474,33 @@ describe("ModelResidencyManager", () => {
     gate.resolve(loaded(ref, "too-late", dispose));
     await manager.waitForIdle();
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-count a timeout or failure after an aborted load", async () => {
+    const ref = assetRef("90");
+    const gate = deferred<ModelLoadedResource<TestResource>>();
+    const abort = new AbortController();
+    const manager = new ModelResidencyManager<TestResource>({
+      budget: { maxCpuBytes: 128, maxGpuBytes: 128, maxInFlightLoads: 1 },
+      loadTimeoutMs: 10,
+      load: () => gate.promise,
+    });
+
+    const acquisition = manager.acquire(
+      acquireOptions(ref, { signal: abort.signal }),
+    );
+    abort.abort();
+    await expect(acquisition).rejects.toMatchObject({ code: "acquire-aborted" });
+    const shutdown = manager.shutdown();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    gate.reject(new Error("late adapter failure"));
+    await shutdown;
+
+    expect(manager.snapshot()).toMatchObject({
+      loadsAborted: 1,
+      loadsTimedOut: 0,
+      loadsFailed: 0,
+    });
   });
 
   it("fails closed for pre-aborted acquisitions and a shut down manager", async () => {

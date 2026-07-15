@@ -512,7 +512,7 @@ export class ModelResidencyManager<Resource = unknown> {
     entry: ResidencyEntry<Resource>,
     waiter: AcquisitionWaiter<Resource>,
   ): void {
-    if (!entry.waiters.delete(waiter.id)) return;
+    entry.waiters.delete(waiter.id);
     this.#detachWaiterSignal(waiter);
     waiter.reject(abortedError());
     this.#recalculatePriority(entry);
@@ -522,9 +522,7 @@ export class ModelResidencyManager<Resource = unknown> {
       this.#pumpQueue();
       return;
     }
-    if (entry.state === "loading") {
-      this.#abandonLoadingEntry(entry, abortedError(), true);
-    }
+    this.#abandonLoadingEntry(entry, abortedError(), true);
   }
 
   #createLease(
@@ -580,7 +578,7 @@ export class ModelResidencyManager<Resource = unknown> {
       priority = Math.max(priority, waiter.priority);
     }
     for (const lease of entry.leases.values()) {
-      if (lease.active) priority = Math.max(priority, lease.priority);
+      priority = Math.max(priority, lease.priority);
     }
     entry.priority = priority;
   }
@@ -598,8 +596,7 @@ export class ModelResidencyManager<Resource = unknown> {
         .sort(
           (left, right) =>
             right.priority - left.priority ||
-            left.queueOrder - right.queueOrder ||
-            left.key.localeCompare(right.key),
+            left.queueOrder - right.queueOrder,
         )[0];
       if (candidate === undefined) return;
       this.#startLoad(candidate);
@@ -613,7 +610,7 @@ export class ModelResidencyManager<Resource = unknown> {
     this.#metrics.loadsStarted += 1;
     if (this.#loadTimeoutMs !== undefined) {
       entry.timeout = setTimeout(() => {
-        if (entry.state !== "loading" || entry.abandoned) return;
+        if (entry.abandoned) return;
         this.#metrics.loadsTimedOut += 1;
         this.#abandonLoadingEntry(
           entry,
@@ -662,7 +659,7 @@ export class ModelResidencyManager<Resource = unknown> {
   ): Promise<void> {
     if (entry.abandoned || this.#closed || this.#entries.get(entry.key) !== entry) {
       await this.#disposeLoaded(result);
-      if (this.#entries.get(entry.key) === entry) this.#entries.delete(entry.key);
+      this.#entries.delete(entry.key);
       return;
     }
 
@@ -691,8 +688,8 @@ export class ModelResidencyManager<Resource = unknown> {
   }
 
   #failLoad(entry: ResidencyEntry<Resource>, error: unknown): void {
-    if (this.#entries.get(entry.key) === entry) this.#entries.delete(entry.key);
-    if (entry.abandoned || this.#closed) return;
+    this.#entries.delete(entry.key);
+    if (entry.abandoned) return;
     this.#metrics.loadsFailed += 1;
     this.#rejectWaiters(entry, error);
   }
@@ -839,22 +836,19 @@ export class ModelResidencyManager<Resource = unknown> {
       .sort(
         (left, right) =>
           left.priority - right.priority ||
-          left.lastUsed - right.lastUsed ||
-          left.key.localeCompare(right.key),
+          left.lastUsed - right.lastUsed,
       );
   }
 
   #evict(entry: ResidencyEntry<Resource>): Promise<void> {
-    if (this.#entries.get(entry.key) !== entry) return Promise.resolve();
     this.#entries.delete(entry.key);
     this.#metrics.evictions += 1;
     return this.#disposeEntry(entry);
   }
 
   #disposeEntry(entry: ResidencyEntry<Resource>): Promise<void> {
-    const result = entry.loaded;
+    const result = entry.loaded!;
     entry.loaded = undefined;
-    if (result === undefined) return Promise.resolve();
     return this.#disposeLoaded(result);
   }
 
