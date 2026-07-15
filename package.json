@@ -1,6 +1,6 @@
 {
   "name": "@plasius/gpu-model-runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "GPU model adapter discovery, loading orchestration, caching, and worker offload.",
   "type": "module",
   "sideEffects": false,
