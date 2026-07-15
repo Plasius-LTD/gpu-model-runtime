@@ -12,6 +12,9 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 - **Added**
   - Bootstrapped the dedicated package repository from the schema baseline.
   - Added the gpu.model.conversion.enabled rollout reference and package smoke test.
+  - Added on-demand source/resource resolution, lazy adapter discovery, bounded
+    fetch policy, integrity checks, content-hash caching, and optional worker
+    dispatch.
 
 - **Added**
   - (placeholder)

@@ -7,7 +7,7 @@ describe("package bootstrap", () => {
     expect(packageBootstrap).toEqual({
       packageName: "@plasius/gpu-model-runtime",
       featureFlag: "gpu.model.conversion.enabled",
-      status: "bootstrap",
+      status: "runtime",
     });
   });
 });
