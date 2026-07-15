@@ -369,15 +369,13 @@ export class ModelResidencyManager<Resource = unknown> {
 
   /** Wait until queued/loading work and its resulting disposal have settled. */
   async waitForIdle(): Promise<void> {
-    while (this.#loadTasks.size > 0 || this.#queuedCount() > 0) {
+    do {
+      this.#pumpQueue();
       const tasks = [...this.#loadTasks];
-      if (tasks.length === 0) {
-        this.#pumpQueue();
-        await Promise.resolve();
-      } else {
+      if (tasks.length > 0) {
         await Promise.allSettled(tasks);
       }
-    }
+    } while (this.#loadTasks.size > 0 || this.#queuedCount() > 0);
     await Promise.allSettled([...this.#disposalTasks]);
   }
 
@@ -403,12 +401,6 @@ export class ModelResidencyManager<Resource = unknown> {
     this.#shutdownPromise = (async () => {
       await Promise.allSettled(disposalTasks);
       await this.waitForIdle();
-      for (const entry of [...this.#entries.values()]) {
-        this.#entries.delete(entry.key);
-        if (entry.state === "resident") {
-          await this.#disposeEntry(entry);
-        }
-      }
       await Promise.allSettled([...this.#disposalTasks]);
     })();
     return this.#shutdownPromise;
@@ -686,11 +678,6 @@ export class ModelResidencyManager<Resource = unknown> {
       return;
     }
 
-    if (entry.waiters.size === 0) {
-      await this.#disposeLoaded(result);
-      this.#entries.delete(entry.key);
-      return;
-    }
     entry.state = "resident";
     entry.loaded = result;
     entry.lastUsed = this.#clock++;
@@ -847,8 +834,7 @@ export class ModelResidencyManager<Resource = unknown> {
       .filter(
         (entry) =>
           entry.state === "resident" &&
-          entry.leases.size === 0 &&
-          ![...entry.leases.values()].some((lease) => lease.pinned),
+          entry.leases.size === 0,
       )
       .sort(
         (left, right) =>
