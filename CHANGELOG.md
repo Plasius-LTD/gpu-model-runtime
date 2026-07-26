@@ -19,6 +19,8 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Security**
+  - Added fail-closed source and npm-package admission for the administrative contributor registry and pinned the CI/CD runtime to Node.js 24.18.0 LTS.
+  - Pinned patched transitive build-tool dependencies for the current npm audit advisories.
   - (placeholder)
 
 ## [0.2.0] - 2026-07-15
