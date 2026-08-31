@@ -69,16 +69,16 @@
   "homepage": "https://github.com/Plasius-LTD/gpu-model-runtime#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.0.1",
-    "@typescript-eslint/eslint-plugin": "^8.59.3",
-    "@typescript-eslint/parser": "^8.59.3",
-    "@vitest/coverage-v8": "^4.1.6",
-    "eslint": "^10.3.0",
-    "globals": "^17.6.0",
+    "@types/node": "^26.4.0",
+    "@typescript-eslint/eslint-plugin": "^8.69.0",
+    "@typescript-eslint/parser": "^8.69.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.1",
+    "globals": "^17.11.0",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"
@@ -104,6 +104,6 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@plasius/asset-contracts": "^0.3.1"
+    "@plasius/asset-contracts": "^0.4.0"
   }
 }
