@@ -16,6 +16,8 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Fixed**
+  - Added exact-commit manual CI validation and disabled package-manager cache
+    finalization in both hosted jobs.
   - (placeholder)
 
 - **Security**
