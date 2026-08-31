@@ -13,14 +13,15 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Changed**
-  - Bound npm publication to the exact prepared `main` commit after successful push-triggered CI.
   - (placeholder)
 
 - **Fixed**
+  - Added exact-commit manual CI validation and disabled package-manager cache
+    finalization in both hosted jobs.
   - (placeholder)
 
 - **Security**
-  - Removed the npm write-token path, added a fail-closed npm 11.5.1-or-newer OIDC guard, and denied fork PR code access to self-hosted CI.
+  - Pinned patched transitive npm dependencies to clear the current audit baseline.
   - Added fail-closed source and npm-package admission for the administrative contributor registry and pinned the CI/CD runtime to Node.js 24.18.0 LTS.
   - Pinned patched transitive build-tool dependencies for the current npm audit advisories.
   - (placeholder)
