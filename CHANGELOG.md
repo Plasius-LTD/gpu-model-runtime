@@ -10,9 +10,11 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 ## [Unreleased]
 
 - **Added**
+  - Added configurable 64 MiB acquisition ceilings, per-resource tightening and typed non-retryable oversize failures.
   - (placeholder)
 
 - **Changed**
+  - Acquisition now bounds HTTP/local/stream bytes before adapter work, applies cancellation/deadlines to local readers, and separates cached models by byte budget. Existing large-resource callers must explicitly opt into a larger finite ceiling in the next 0.x minor release.
   - Refreshed compatible @plasius/* lockfile resolutions to the latest published releases.
  - (placeholder)
 

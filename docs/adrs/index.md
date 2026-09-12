@@ -7,3 +7,4 @@
 - [ADR-0005: On-Demand Loading Runtime Boundary](./adr-0005-on-demand-loading-runtime-boundary.md)
 - [ADR-0006: Content-Addressed Model Residency](./adr-0006-content-addressed-model-residency.md)
 - [ADR-0007: Hosted OIDC Package Publication](./adr-0007-hosted-oidc-package-publication.md)
+- [ADR-0008: Bounded Source Acquisition](./adr-0008-bounded-source-acquisition.md)
