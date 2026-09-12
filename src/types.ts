@@ -1,3 +1,6 @@
+/** Default ceiling per entrypoint or related resource: 64 MiB. */
+export const DEFAULT_MODEL_MAX_BYTES = 64 * 1024 * 1024;
+
 export type ModelSourceKind =
   | "file-path"
   | "url"
@@ -104,11 +107,15 @@ export interface ResourceResolver {
 }
 
 export type ResolveResourceOptions = Readonly<{
+  /** Tightens the inherited acquisition ceiling for this resource. */
+  maxBytes?: number;
   signal?: AbortSignal;
   range?: Readonly<{ start: number; end?: number }>;
 }>;
 
 export type FetchPolicy = Readonly<{
+  /** Maximum bytes per entrypoint/resource, including non-HTTP sources. Default 64 MiB. */
+  maxBytes?: number;
   maxAttempts?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
@@ -116,7 +123,8 @@ export type FetchPolicy = Readonly<{
 }>;
 
 export type RuntimeFetch = (input: string | URL, init?: RequestInit) => Promise<Response>;
-export type ReadFile = (path: string, signal?: AbortSignal) => Promise<Uint8Array>;
+/** Providers must enforce maxBytes during I/O; runtime also checks returned bytes. */
+export type ReadFile = (path: string, signal?: AbortSignal, options?: Readonly<{ maxBytes: number }>) => Promise<Uint8Array>;
 export type HashBytes = (bytes: Uint8Array) => Promise<string>;
 export type Sleep = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 export type BlobStorageUrlResolver = (baseUrl: string, reference: string) => string | Promise<string>;

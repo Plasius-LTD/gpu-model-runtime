@@ -25,7 +25,7 @@ is released.
   statuses, abort signals, optional byte ranges, response content types, and
   SHA-256 integrity checks.
 - `MemoryModelCache` keys loaded output by content hash, adapter format, and
-  stable adapter options. Call `runtime.invalidate()` to clear all entries or
+  stable adapter options and acquisition byte ceiling. Call `runtime.invalidate()` to clear all entries or
   entries for one content hash.
 - Worker execution is opt-in through a `WorkerDispatcher`; consumers that do
   not provide one stay on the main execution path.
@@ -49,6 +49,71 @@ const result = await runtime.loadModel({
 result.canonicalModel;
 result.rendererReady;
 ```
+
+## Bounded source acquisition
+
+Every entrypoint and related resource has a default ceiling of 64 MiB
+(`DEFAULT_MODEL_MAX_BYTES`). `fetchPolicy.maxBytes` applies to URLs, memory,
+Blobs, streams, and injected file reads. Opt into a larger finite positive safe
+integer only after budgeting for that workload:
+
+```ts
+await runtime.loadModel(source, {
+  fetchPolicy: { maxBytes: 128 * 1024 * 1024, timeoutMs: 30_000 },
+  signal: controller.signal,
+});
+// In an adapter, tighten the inherited ceiling for one texture:
+await input.resourceResolver.resolve("textures/albedo.png", {
+  maxBytes: 8 * 1024 * 1024,
+  signal: context.signal,
+});
+```
+
+A per-resolution limit can tighten the inherited ceiling, never enlarge it.
+Known lengths are checked before reading/copying, and actual streamed bytes are
+checked before retention even when a server omits/misstates Content-Length or
+ignores Range. `byteLengthHint` can reject an oversized stream early; an
+underestimate never disables actual-byte checks. Hashes still cover the admitted
+bytes, including a returned range. Limits apply to decoded Fetch body bytes;
+compressed Content-Length is only an additional early check.
+
+Oversize throws `ModelResourceTooLargeError` with code
+`MODEL_RESOURCE_TOO_LARGE` and a fixed message containing no source identifiers.
+It is not retried. Cancellation and acquisition deadlines stop pending reads,
+cancel/release readers, and request iterator cleanup. An uncooperative producer
+cannot delay the rejection, although its own background work cannot be forcibly
+stopped. File-provider callbacks now receive a third `{ maxBytes }` argument;
+they must enforce it incrementally during their own I/O and honor the signal.
+The runtime checks returned file bytes before hashing or adapter use. Existing
+two-argument providers remain callable but need review for pre-allocation limits.
+
+The 30-second default `timeoutMs` now covers local/stream acquisition too;
+for ModelRuntime it includes entrypoint fetching, retries and hashing. Each
+related-resource resolution gets its own deadline and inherits caller abort.
+Direct `fetchResource` retains a deadline per attempt, including retry delay.
+Timeouts must be positive integers no larger than 2,147,483,647 milliseconds.
+
+The ceiling is per resource, not a total process/model budget. Stream storage
+grows geometrically with no per-chunk metadata list; live runtime copy storage
+is at most twice the configured ceiling (excluding producer/network buffers and
+hashing). Many tiny/empty chunks yield to the event loop periodically so timers
+can cancel work. Adapters still own total resource count/bytes, decoded image or
+mesh budgets, concurrency and format validation. ModelResidencyManager separately
+bounds resident CPU/GPU resources. Cache identity includes maxBytes so a model
+loaded with a larger ceiling cannot bypass a later stricter request.
+
+This behavior requires a **minor release in the current 0.x series**: previously
+accepted resources above 64 MiB require an explicit larger budget. The release
+pipeline allocates the version; consumers must wait for a verified npm release.
+Disabling `gpu.model.conversion.enabled` at the consumer prevents conversion and
+restores its tested fallback. Byte limits remain enforced whenever this runtime
+is called; there is no safety-check bypass flag.
+
+The implementation uses browser Web Streams, Blob, AbortController, timers and
+Web Crypto (or injected hashing), with no filesystem dependency. Node 24 tests
+exercise those APIs, streaming/range/integrity semantics and both ESM/CJS builds;
+real-browser integration remains a consumer validation responsibility. See
+[ADR-0008](docs/adrs/adr-0008-bounded-source-acquisition.md).
 
 ## Model residency
 

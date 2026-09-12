@@ -41,3 +41,17 @@ The runtime test suite covers memory package resources, relative URL resources,
 content type and range propagation, transient retries, integrity failure,
 cache/invalidation behavior, injected file reads, lazy adapter selection, and
 worker dispatch.
+
+## Acquisition budget extension (runtime#6)
+
+ADR-0008 defines the implementation plan and verification matrix for per-resource
+64 MiB default ceilings. `fetchPolicy.maxBytes` is inherited across entrypoint
+and related resources; a resolver's maxBytes can tighten it. Known lengths reject
+before materialization, and streamed data is checked before retention. Local
+source reads receive the same bounded cancellation/deadline behavior as HTTP.
+Injected file readers receive the budget and own enforcement during their I/O.
+
+The adapter still owns aggregate model and decoded-resource quotas; runtime
+residency owns retained CPU/GPU accounting. The adapter must consume a verified
+published runtime version, with runtime#7's release prerequisites resolved first.
+No unpublished reference or duplicated resolver is an acceptable dependency path.

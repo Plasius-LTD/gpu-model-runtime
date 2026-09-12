@@ -63,3 +63,9 @@ cache or source data migration is required.
 - Performance: format modules and worker execution are lazy/optional, and cache
   keys avoid repeated adapter work for identical inputs.
 - Accessibility/SEO: not applicable to this package-only runtime boundary.
+
+## Resource budget refinement
+
+[ADR-0008](adr-0008-bounded-source-acquisition.md) adds finite acquisition ceilings
+and local-stream deadlines to this existing owning boundary. It does not move
+format or aggregate decoded-resource ownership into the runtime.

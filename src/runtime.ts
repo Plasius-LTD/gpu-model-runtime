@@ -1,3 +1,4 @@
+import { abortable, acquisitionController, boundedBytes, byteLimit, checkAbort, checkSize, readBoundedStream } from "./bytes.js";
 import { MemoryModelCache, createModelCacheKey } from "./cache.js";
 import { defaultSleep, fetchResource, sha256Hex } from "./fetch.js";
 import type {
@@ -65,6 +66,7 @@ export class AdapterRegistry {
 }
 
 export class PackageResourceResolver implements ResourceResolver {
+  private readonly parentSignal?: AbortSignal;
   private readonly memoryResources: Readonly<Record<string, ModelResourceInput>>;
   private readonly baseUrl?: string;
   private readonly sourceKind: ModelSourceKind;
@@ -77,6 +79,7 @@ export class PackageResourceResolver implements ResourceResolver {
 
   public constructor(options: Readonly<{
     sourceKind: ModelSourceKind;
+    signal?: AbortSignal;
     baseUrl?: string;
     package?: ModelPackage;
     fetch: RuntimeFetch;
@@ -86,50 +89,60 @@ export class PackageResourceResolver implements ResourceResolver {
     headers?: Readonly<Record<string, string>>;
     blobStorageUrlResolver?: RuntimeDependencies["blobStorageUrlResolver"];
   }>) {
+    this.parentSignal = options.signal;
     this.sourceKind = options.sourceKind;
     this.baseUrl = options.package?.baseUrl ?? options.baseUrl;
     this.memoryResources = options.package?.resources ?? {};
     this.fetch = options.fetch;
     this.hashBytes = options.hashBytes;
     this.sleep = options.sleep;
-    this.fetchPolicy = options.fetchPolicy;
+    this.fetchPolicy = { ...options.fetchPolicy };
     this.headers = options.headers;
     this.blobStorageUrlResolver = options.blobStorageUrlResolver;
   }
 
   async resolve(reference: string | ResourceReference, options: ResolveResourceOptions = {}): Promise<ResolvedResource> {
-    const requested = typeof reference === "string" ? { path: reference } : reference;
-    const memoryKey = normalizePackagePath(requested.path);
-    const memoryResource = this.memoryResources[memoryKey] ?? this.memoryResources[`./${memoryKey}`];
-    if (memoryResource) {
-      const bytes = await toBytes(memoryResource.bytes);
-      await verifyResourceIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.hashBytes);
+    const inheritedLimit = byteLimit(this.fetchPolicy?.maxBytes);
+    const maxBytes = Math.min(inheritedLimit, byteLimit(options.maxBytes ?? inheritedLimit));
+    const controller = acquisitionController(options.signal, this.fetchPolicy?.timeoutMs, this.parentSignal);
+    try {
+      checkAbort(controller.signal);
+      const requested = typeof reference === "string" ? { path: reference } : reference;
+      const memoryKey = normalizePackagePath(requested.path);
+      const memoryResource = this.memoryResources[memoryKey] ?? this.memoryResources[`./${memoryKey}`];
+      if (memoryResource) {
+        const bytes = await boundedBytes(memoryResource.bytes, maxBytes, controller.signal);
+        await abortable(verifyResourceIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.hashBytes), controller.signal);
+        return {
+          path: memoryKey,
+          bytes,
+          contentType: requested.contentType ?? memoryResource.contentType,
+          contentHash: await abortable(this.hashBytes(bytes), controller.signal),
+          rangeSupported: false,
+        };
+      }
+
+      const url = await abortable(this.resolveUrl(requested.path), controller.signal);
+      checkAbort(controller.signal);
+      const result = await fetchResource(url, {
+        fetch: this.fetch,
+        hashBytes: this.hashBytes,
+        sleep: this.sleep,
+        headers: this.headers,
+        integrity: requested.integrity,
+        policy: this.fetchPolicy,
+        resolveOptions: { ...options, maxBytes, signal: controller.signal },
+      });
       return {
         path: memoryKey,
-        bytes,
-        contentType: requested.contentType ?? memoryResource.contentType,
-        contentHash: await this.hashBytes(bytes),
-        rangeSupported: false,
+        bytes: result.bytes,
+        contentType: requested.contentType ?? result.contentType,
+        contentHash: await abortable(this.hashBytes(result.bytes), controller.signal),
+        rangeSupported: result.rangeSupported,
       };
+    } finally {
+      controller.dispose();
     }
-
-    const url = await this.resolveUrl(requested.path);
-    const result = await fetchResource(url, {
-      fetch: this.fetch,
-      hashBytes: this.hashBytes,
-      sleep: this.sleep,
-      headers: this.headers,
-      integrity: requested.integrity,
-      policy: this.fetchPolicy,
-      resolveOptions: options,
-    });
-    return {
-      path: memoryKey,
-      bytes: result.bytes,
-      contentType: requested.contentType ?? result.contentType,
-      contentHash: await this.hashBytes(result.bytes),
-      rangeSupported: result.rangeSupported,
-    };
   }
 
   private async resolveUrl(reference: string): Promise<string> {
@@ -203,7 +216,7 @@ export class ModelRuntime {
       fileName: input.fileName,
       sourceKind: source.kind,
     }, options.formatId);
-    const cacheKey = createModelCacheKey(input.contentHash, adapter.formatId, options.adapterOptions);
+    const cacheKey = createModelCacheKey(input.contentHash, adapter.formatId, { adapterOptions: options.adapterOptions ?? null, maxBytes: byteLimit(options.fetchPolicy?.maxBytes) });
     const useCache = options.useCache ?? true;
     if (useCache) {
       const cached = await this.cache.get<ModelLoadResult<TCanonicalModel, TRendererReady>>(cacheKey);
@@ -257,56 +270,66 @@ export class ModelRuntime {
   }
 
   private async resolveSource(source: ModelSource, options: LoadModelOptions): Promise<ResolvedModelSource> {
-    const fileName = sourceFileName(source);
-    const baseUrl = "url" in source ? source.url : undefined;
-    const headers = "headers" in source ? source.headers : undefined;
-    let bytes: Uint8Array;
-    let contentType: string | undefined = "mimeTypeHint" in source ? source.mimeTypeHint : undefined;
-    let rangeSupported = false;
+    const maxBytes = byteLimit(options.fetchPolicy?.maxBytes);
+    const controller = acquisitionController(options.signal, options.fetchPolicy?.timeoutMs);
+    try {
+      checkAbort(controller.signal);
+      const fileName = sourceFileName(source);
+      const baseUrl = "url" in source ? source.url : undefined;
+      const headers = "headers" in source ? source.headers : undefined;
+      let bytes: Uint8Array;
+      let contentType: string | undefined = "mimeTypeHint" in source ? source.mimeTypeHint : undefined;
+      let rangeSupported = false;
 
-    if (source.kind === "file-path") {
-      if (!this.readFile) {
-        throw new Error("file-path sources require a readFile dependency");
+      if (source.kind === "file-path") {
+        if (!this.readFile) {
+          throw new Error("file-path sources require a readFile dependency");
+        }
+        bytes = await abortable(this.readFile(source.path, controller.signal, { maxBytes }), controller.signal);
+        checkSize(bytes.byteLength, maxBytes);
+      } else if (source.kind === "url" || source.kind === "blob-storage-url") {
+        const result = await fetchResource(ensureHttpUrl(source.url), {
+          fetch: this.fetch,
+          hashBytes: this.hashBytes,
+          sleep: this.sleep,
+          headers,
+          integrity: options.integrity,
+          policy: options.fetchPolicy,
+          resolveOptions: { signal: controller.signal },
+        });
+        bytes = result.bytes;
+        contentType ??= result.contentType;
+        rangeSupported = result.rangeSupported;
+      } else {
+        bytes = await sourceToBytes(source, maxBytes, controller.signal);
       }
-      bytes = await this.readFile(source.path, options.signal);
-    } else if (source.kind === "url" || source.kind === "blob-storage-url") {
-      const result = await fetchResource(ensureHttpUrl(source.url), {
+
+      checkAbort(controller.signal);
+      const contentHash = await abortable(this.hashBytes(bytes), controller.signal);
+      const resourceResolver = new PackageResourceResolver({
+        sourceKind: source.kind,
+        signal: options.signal,
+        baseUrl,
+        package: source.package,
         fetch: this.fetch,
         hashBytes: this.hashBytes,
         sleep: this.sleep,
+        fetchPolicy: options.fetchPolicy,
         headers,
-        integrity: options.integrity,
-        policy: options.fetchPolicy,
-        resolveOptions: { signal: options.signal },
+        blobStorageUrlResolver: this.blobStorageUrlResolver,
       });
-      bytes = result.bytes;
-      contentType ??= result.contentType;
-      rangeSupported = result.rangeSupported;
-    } else {
-      bytes = await sourceToBytes(source);
+      return {
+        source,
+        bytes,
+        contentType,
+        fileName,
+        contentHash,
+        rangeSupported,
+        resourceResolver,
+      };
+    } finally {
+      controller.dispose();
     }
-
-    const contentHash = await this.hashBytes(bytes);
-    const resourceResolver = new PackageResourceResolver({
-      sourceKind: source.kind,
-      baseUrl,
-      package: source.package,
-      fetch: this.fetch,
-      hashBytes: this.hashBytes,
-      sleep: this.sleep,
-      fetchPolicy: options.fetchPolicy,
-      headers,
-      blobStorageUrlResolver: this.blobStorageUrlResolver,
-    });
-    return {
-      source,
-      bytes,
-      contentType,
-      fileName,
-      contentHash,
-      rangeSupported,
-      resourceResolver,
-    };
   }
 }
 
@@ -342,52 +365,11 @@ function normalizePackagePath(path: string): string {
   return segments.join("/");
 }
 
-async function sourceToBytes(source: Exclude<ModelSource, { kind: "file-path" | "url" | "blob-storage-url" }>): Promise<Uint8Array> {
-  if (source.kind === "blob") {
-    return toBytes(source.blob);
-  }
-  if (source.kind === "array-buffer") {
-    return new Uint8Array(source.bytes);
-  }
-  if (source.kind === "uint8-array") {
-    return new Uint8Array(source.bytes);
-  }
-
-  const chunks: Uint8Array[] = [];
-  if (Symbol.asyncIterator in Object(source.stream)) {
-    for await (const chunk of source.stream as AsyncIterable<Uint8Array>) {
-      chunks.push(new Uint8Array(chunk));
-    }
-  } else {
-    const reader = (source.stream as ReadableStream<Uint8Array>).getReader();
-    try {
-      while (true) {
-        const next = await reader.read();
-        if (next.done) break;
-        chunks.push(new Uint8Array(next.value));
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-  const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
-async function toBytes(input: ArrayBuffer | Blob | Uint8Array): Promise<Uint8Array> {
-  if (input instanceof Blob) {
-    return new Uint8Array(await input.arrayBuffer());
-  }
-  if (input instanceof Uint8Array) {
-    return new Uint8Array(input);
-  }
-  return new Uint8Array(input);
+async function sourceToBytes(source: Exclude<ModelSource, { kind: "file-path" | "url" | "blob-storage-url" }>, maxBytes: number, signal: AbortSignal): Promise<Uint8Array> {
+  if (source.kind === "blob") return boundedBytes(source.blob, maxBytes, signal);
+  if (source.kind === "array-buffer" || source.kind === "uint8-array") return boundedBytes(source.bytes, maxBytes, signal);
+  if (source.byteLengthHint !== undefined) checkSize(source.byteLengthHint, maxBytes);
+  return readBoundedStream(source.stream, maxBytes, signal);
 }
 
 async function verifyResourceIntegrity(bytes: Uint8Array, integrity: string | undefined, hashBytes: HashBytes): Promise<void> {
