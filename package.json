@@ -95,7 +95,7 @@
   ],
   "overrides": {
     "nanoid": "3.3.18",
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "esbuild": "0.28.1",
     "minimatch": "^10.2.1",
     "postcss": "8.5.23"
@@ -104,6 +104,6 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@plasius/asset-contracts": "^0.4.2"
+    "@plasius/asset-contracts": "^0.4.3"
   }
 }
