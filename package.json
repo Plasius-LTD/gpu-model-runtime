@@ -104,6 +104,6 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@plasius/asset-contracts": "^0.4.3"
+    "@plasius/asset-contracts": "^0.4.4"
   }
 }
