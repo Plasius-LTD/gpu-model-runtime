@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { AdapterRegistry, ModelRuntime, PackageResourceResolver, fetchResource, sha256Hex, type ModelSource, type ResolvedModelSource } from "../src/index.js";
 
@@ -208,5 +210,87 @@ describe("acquisition cleanup and portability", () => {
   it("handles an empty HTTP body", async () => {
     const result = await fetchResource("https://example.test/file", { fetch: async () => new Response(null, { status: 204 }), hashBytes, sleep, policy });
     expect(result.bytes.length).toBe(0);
+  });
+});
+
+
+describe("portable chunks and encoded integrity", () => {
+  it.each(["iterable", "readable"] as const)("accepts cross-realm %s chunks at the limit with copy ownership", async (kind) => {
+    const foreign = runInNewContext("new Uint8Array([1, 2])") as Uint8Array;
+    const chunks = (async function* () {
+      yield foreign;
+      foreign.fill(9);
+      yield new Uint8Array([3]);
+    })();
+    const source = kind === "iterable" ? chunks : new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await chunks.next();
+        if (next.done) controller.close(); else controller.enqueue(next.value);
+      },
+    }, { highWaterMark: 0 });
+    const result = await runtime().runtime.loadModel<number[]>({ kind: "stream", stream: source }, { fetchPolicy: { ...policy, maxBytes: 3 } });
+    expect(result.canonicalModel).toEqual([1, 2, 3]);
+  });
+
+  it.each(["iterable", "readable"] as const)("bounds cross-realm %s chunks and cleans up on oversize", async (kind) => {
+    const closed = vi.fn();
+    const foreign = runInNewContext("new Uint8Array(5)") as Uint8Array;
+    const source = kind === "iterable" ? (async function* () {
+      try { yield foreign; } finally { closed(); }
+    })() : new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(foreign); }, cancel: closed });
+    await expect(runtime().runtime.loadModel({ kind: "stream", stream: source }, { fetchPolicy: policy })).rejects.toMatchObject({ code: "MODEL_RESOURCE_TOO_LARGE" });
+    expect(closed).toHaveBeenCalledTimes(1);
+    if (source instanceof ReadableStream) expect(source.locked).toBe(false);
+  });
+
+  it.each(["Uint16Array", "Int8Array", "Uint8ClampedArray", "DataView"])("rejects cross-realm %s despite a spoofed Uint8Array tag", async (name) => {
+    const foreign = runInNewContext(`new ${name}(${name === "DataView" ? "new ArrayBuffer(2)" : "2"})`) as Uint8Array;
+    Object.defineProperty(foreign, Symbol.toStringTag, { value: "Uint8Array" });
+    const closed = vi.fn();
+    const source = (async function* () { try { yield foreign; } finally { closed(); } })();
+    await expect(runtime().runtime.loadModel({ kind: "stream", stream: source }, { fetchPolicy: policy })).rejects.toThrow("Model stream chunks must be Uint8Array");
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  for (const kind of ["url", "related-url", "related-memory"] as const) {
+    it.each(["hex", "base64"] as const)(`verifies correct and mutated %s digests for ${kind}`, async (encoding) => {
+      const bytes = new TextEncoder().encode("abc");
+      const digest = createHash("sha256").update(bytes).digest(encoding);
+      const expected = encoding === "hex" ? digest.toUpperCase() : digest;
+      const mutated = encoding === "hex" ? `${digest[0] === "0" ? "1" : "0"}${digest.slice(1)}` : `${digest[0]!.toUpperCase()}${digest.slice(1)}`;
+      expect(mutated).not.toBe(digest);
+      const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes.subarray(0, 1)); controller.enqueue(bytes.subarray(1)); controller.close(); } }), { status: 206 }));
+      const resolver = new PackageResourceResolver({ sourceKind: "url", baseUrl: "https://example.test/model", fetch, hashBytes, sleep, fetchPolicy: policy,
+        package: kind === "related-memory" ? { resources: { resource: { bytes } } } : undefined });
+      const acquire = (integrity: string) => kind === "url" ? fetchResource("https://example.test/file", { fetch, hashBytes, sleep, policy, integrity, resolveOptions: { range: { start: 0, end: 2 } } }) : resolver.resolve({ path: "resource", integrity });
+      await expect(acquire(`sha256-${expected}`)).resolves.toMatchObject({ bytes });
+      await expect(acquire(`sha256-${mutated}`)).rejects.toThrow("Model resource integrity check failed");
+      expect(fetch).toHaveBeenCalledTimes(kind === "related-memory" ? 0 : 2);
+    });
+  }
+
+  it("supports base64 with injected hashing when Web Crypto is unavailable", async () => {
+    const bytes = new TextEncoder().encode("abc");
+    const digest = createHash("sha256").update(bytes).digest();
+    const hash = vi.fn(async () => digest.toString("hex"));
+    vi.stubGlobal("crypto", undefined);
+    try {
+      await expect(fetchResource("https://example.test/file", { fetch: async () => new Response(bytes), hashBytes: hash, sleep, policy, integrity: `sha256-${digest.toString("base64")}` })).resolves.toMatchObject({ bytes });
+      expect(hash).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("cancels an in-flight integrity check without retrying", async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const hashing = new Promise<void>((resolve) => { started = resolve; });
+    const hash = vi.fn(async () => { started(); return new Promise<string>(() => {}); });
+    const fetch = vi.fn(async () => new Response(new Uint8Array([1])));
+    const pending = fetchResource("https://example.test/file", { fetch, hashBytes: hash, sleep, policy, integrity: "0".repeat(64), resolveOptions: { signal: controller.signal } });
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await hashing;
+    controller.abort();
+    await rejected;
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

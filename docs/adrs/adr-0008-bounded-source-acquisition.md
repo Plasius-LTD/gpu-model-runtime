@@ -1,6 +1,6 @@
 # ADR-0008: Bounded Source Acquisition
 
-- Status: Accepted for implementation; publication pending runtime#7
+- Status: Accepted; release prerequisite runtime#7 completed 2026-10-20
 - Date: 2026-09-12
 - Parent Feature: Plasius-LTD/plasius-ltd-site#1149
 - Implementation Task: Plasius-LTD/gpu-model-runtime#6
@@ -30,6 +30,17 @@ Preserve integrity over exactly the admitted bytes. Race pending producer work
 against cancellation and a finite acquisition deadline; request cleanup without
 awaiting an indefinitely stalled iterator. Cancel late HTTP responses after an
 aborted fetch. Release listeners/readers on success and failure.
+
+Use the intrinsic TypedArray element-kind getter with `ArrayBuffer.isView` to
+admit actual Uint8Array views across realms. `instanceof` rejects valid foreign
+views, and constructor names or Object.prototype.toString tags can be spoofed.
+All admitted chunks still copy into the same bounded, runtime-owned storage.
+
+Parse integrity as 64-character hex or standard padded base64 after the optional
+sha256 prefix. Only hex is case-normalized; base64 retains its exact case. Reuse
+one verifier for fetched and memory package resources. Hex uses the injected hash;
+base64 uses Web Crypto or the existing injected SHA-256-hex fallback. Do not hash
+unnecessarily in both encodings or retry malformed/mismatched integrity.
 
 Apply source limits before hashing/cache/adapter work. Pass maxBytes to injected
 file readers as an optional third argument, retaining source compatibility;
@@ -61,9 +72,10 @@ main/cd.yml prepares the actual unused version. Existing larger callers must set
 an explicit reviewed ceiling. Existing injected file callbacks remain callable,
 but must adopt the supplied budget for pre-allocation enforcement.
 
-Release remains blocked by runtime#7 (publisher verification, release controls
-and runner-policy acceptance). This ADR changes no CI runner or publication
-policy. Only the existing approved cd.yml/main/production OIDC route may publish.
+Runtime#7 completed with verified public 0.2.5, exact-main CI and production OIDC
+publication. The cross-realm and encoded-integrity acceptance gaps still require
+the minor release described above. CI follows ADR-0009's quarantined trusted-push
+boundary; only the existing cd.yml/main/production OIDC route may publish.
 After exact-SHA CI and verified registry/provenance, consuming adapters can adopt
 the new released version. Rollback disables the consumer flag and retains its
 validated fallback/pinned version; do not disable byte checks to pass bad inputs.
@@ -73,7 +85,10 @@ validated fallback/pinned version; do not disable byte checks to pass bad inputs
 Requirements-derived regression tests cover exact/over bounds, declared/chunked
 responses, ranges/integrity, related URL/memory resources, Blob/array/file inputs,
 stream hints, cancellation/timeouts, malformed policy/chunks, provider errors,
-late responses and budget-sensitive caching. A many-small-chunk case verifies
+late responses and budget-sensitive caching. Cross-realm exact/oversize chunks,
+spoofed wrong typed views, streamed URL/related URL/memory correct and mutated
+hex/base64 digests, injected-hash fallback and abort during integrity hashing
+cover the review follow-up requirements. A many-small-chunk case verifies
 copy ownership and bounded geometric growth. Test coverage includes every changed
 source file; lint/typecheck/build/pack and runtime dependency audit are required.
 
