@@ -220,8 +220,9 @@ artifacts using exact, case-normalised path checks. CI accepts only branch pushe
 in this repository and uses the `Public CI - Quarantined` runner group with
 explicit `[self-hosted, Linux, X64]` labels. Pull requests and fork events cannot
 execute these jobs. The group admits the reviewed `ci.yml` on `main`; a reviewed
-branch can be temporarily admitted by its immutable workflow commit SHA for PR
-validation, then removed after merge. Each job has a timeout and a newer push
+branch ref can be temporarily admitted for PR validation after its exact workflow
+commit SHA is reviewed and recorded, then removed after merge. A SHA-only entry
+does not admit a branch-triggered run; use the exact reviewed branch ref. Each job has a timeout and a newer push
 cancels stale validation for the same ref. Publication uses the GitHub-hosted `production` job with
 Node 24 and a pinned npm 11.6.2 client. It is token-free and proceeds only while the prepared SHA
 is the exact `main` head after successful push-triggered CI. Do not dispatch CD

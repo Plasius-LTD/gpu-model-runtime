@@ -24,9 +24,11 @@ callers or dispatch inputs. Repository identity and push-event conditions apply
 to every job; fork copies therefore cannot schedule these jobs.
 
 The runner group's workflow allowlist admits `ci.yml@refs/heads/main`. For a PR,
-a maintainer may temporarily admit the reviewed immutable workflow commit SHA;
-remove that exact entry after branch validation and merge. Preserve other allowed
-workflows and repositories. A new branch commit requires a fresh reviewed entry.
+a maintainer may temporarily admit the exact reviewed branch workflow ref after
+recording its immutable commit SHA; remove that entry after validation and merge.
+Branch-triggered runs require the branch ref: the initial SHA-only admission did
+not schedule this task's run, while the exact branch admission did. Preserve other allowed
+workflows and repositories. Review and record any new branch commit before allowing it to execute.
 Do not expand the group to arbitrary branch patterns or change organisation-wide
 runner access. CI has per-job timeouts and cancels stale runs on the same ref.
 
@@ -61,5 +63,5 @@ standalone package.
 Disable the affected CI/publication workflow to stop an unsafe channel. Restore
 the last reviewed workflow through a normal forward PR, revalidate its runner
 allowlist and exact-SHA CI, then resume the ordinary release channel. Remove any
-temporary immutable-SHA entry when it is no longer needed. Never restore the
+temporary branch/SHA entry when it is no longer needed. Never restore the
 excluded administrative path, add a hosted CI fallback or publish locally.
