@@ -216,9 +216,22 @@ Apache-2.0. See LICENSE, SECURITY.md, and the files under legal/.
 ## Release integrity
 
 CI keeps the administrative contributor registry outside Git and npm package
-artifacts using exact, case-normalised path checks. CI runs on explicit
-GitHub-hosted runners. Publication uses the GitHub-hosted `production` job with
+artifacts using exact, case-normalised path checks. CI accepts only branch pushes
+in this repository and uses the `Public CI - Quarantined` runner group with
+explicit `[self-hosted, Linux, X64]` labels. Pull requests and fork events cannot
+execute these jobs. The group admits the reviewed `ci.yml` on `main`; a reviewed
+branch ref can be temporarily admitted for PR validation after its exact workflow
+commit SHA is reviewed and recorded, then removed after merge. A SHA-only entry
+does not admit a branch-triggered run; use the exact reviewed branch ref. Each job has a timeout and a newer push
+cancels stale validation for the same ref. Publication uses the GitHub-hosted `production` job with
 Node 24 and a pinned npm 11.6.2 client. It is token-free and proceeds only while the prepared SHA
 is the exact `main` head after successful push-triggered CI. Do not dispatch CD
 until the npm trusted-publisher binding is verified.
+
+The parent rollout flag `platform.public-artifact-integrity.enabled` stages public
+distribution; enabled, disabled and rollback states all retain mandatory artifact
+admission and runner/publication boundaries. To roll back an unsafe channel,
+disable the affected workflow through GitHub Actions and restore the last reviewed
+workflow through a forward PR; never add hosted CI fallback, token publication or
+restore excluded administrative files. See [ADR-0009](docs/adrs/adr-0009-quarantined-self-hosted-ci.md).
 <!-- END PLASIUS RELEASE INTEGRITY -->

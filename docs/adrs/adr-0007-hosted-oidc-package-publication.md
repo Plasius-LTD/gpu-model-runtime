@@ -1,6 +1,6 @@
 # ADR-0007: Hosted OIDC Package Publication
 
-- Status: Accepted
+- Status: Accepted; CI runner decision superseded by ADR-0009
 - Date: 2026-08-11
 
 ## Context
@@ -15,8 +15,9 @@ Publication is phase-isolated: dependency installation, package validation, SBOM
 Publish only from the GitHub-hosted `production` job using npm trusted
 publishing. Prove the prepared SHA is still the exact remote `main` head and
 that push-triggered `ci.yml` succeeded for it. Require Node 24 and npm 11.5.1 or
-newer, request provenance, and prohibit npm write-token fallbacks. Reviewed CI
-uses explicit GitHub-hosted runners.
+newer, request provenance, and prohibit npm write-token fallbacks. The original hosted-CI choice is superseded by
+[ADR-0009](adr-0009-quarantined-self-hosted-ci.md), which follows the authoritative
+Project self-hosted CI acceptance criteria. Publication remains GitHub-hosted.
 
 ## Consequences
 
