@@ -13,6 +13,20 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.2.5] - 2026-10-20
+
+- **Added**
+  - (placeholder)
+
+- **Changed**
   - Run trusted push CI on the quarantined self-hosted Linux/X64 group, with job timeouts and stale-run cancellation; keep exact-main OIDC publication GitHub-hosted.
 
 - **Fixed**
@@ -463,7 +477,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ---
 
-[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.2.5...HEAD
 [1.0.0]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.0
 [1.0.13]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.13
 [1.0.17]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.17
@@ -504,3 +518,4 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 [0.2.2]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.2
 [0.2.3]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.3
 [0.2.4]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.4
+[0.2.5]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.5
