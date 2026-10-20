@@ -13,7 +13,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Changed**
-  - (placeholder)
+  - Run trusted push CI on the quarantined self-hosted Linux/X64 group, with job timeouts and stale-run cancellation; keep exact-main OIDC publication GitHub-hosted.
 
 - **Fixed**
   - (placeholder)

@@ -8,3 +8,4 @@
 - [ADR-0006: Content-Addressed Model Residency](./adr-0006-content-addressed-model-residency.md)
 - [ADR-0007: Hosted OIDC Package Publication](./adr-0007-hosted-oidc-package-publication.md)
 - [ADR-0008: Bounded Source Acquisition](./adr-0008-bounded-source-acquisition.md)
+- [ADR-0009: Quarantined Self-Hosted CI](./adr-0009-quarantined-self-hosted-ci.md)
