@@ -55,3 +55,10 @@ The adapter still owns aggregate model and decoded-resource quotas; runtime
 residency owns retained CPU/GPU accounting. The adapter must consume a verified
 published runtime version, with runtime#7's release prerequisites resolved first.
 No unpublished reference or duplicated resolver is an acceptable dependency path.
+
+Runtime#7 now has verified 0.2.5 release evidence. Runtime#6's final conformance
+pass accepts byte chunks from other JavaScript realms via intrinsic element-kind
+checks, rejects spoofed/non-byte views, and keeps incremental limits/copy ownership.
+Fetched and memory resources share encoding-aware SHA-256 verification: hex is
+case-insensitive and padded base64 is case-sensitive. The documented minor release
+must include these regressions before downstream broad-import adoption.

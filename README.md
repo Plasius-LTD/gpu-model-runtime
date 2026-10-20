@@ -77,6 +77,13 @@ underestimate never disables actual-byte checks. Hashes still cover the admitted
 bytes, including a returned range. Limits apply to decoded Fetch body bytes;
 compressed Content-Length is only an additional early check.
 
+Integrity accepts a 64-character SHA-256 hex digest (case-insensitive) or its
+standard padded base64 encoding (case-sensitive), with an optional `sha256-`
+prefix. The same verifier applies to fetched and in-memory package resources;
+malformed or mismatched digests fail without retry. Cross-realm `Uint8Array`
+stream chunks are accepted with the same limits and copy ownership, while other
+typed-array kinds, DataViews and spoofed byte-array tags are rejected.
+
 Oversize throws `ModelResourceTooLargeError` with code
 `MODEL_RESOURCE_TOO_LARGE` and a fixed message containing no source identifiers.
 It is not retried. Cancellation and acquisition deadlines stop pending reads,

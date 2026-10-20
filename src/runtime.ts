@@ -1,6 +1,6 @@
 import { abortable, acquisitionController, boundedBytes, byteLimit, checkAbort, checkSize, readBoundedStream } from "./bytes.js";
 import { MemoryModelCache, createModelCacheKey } from "./cache.js";
-import { defaultSleep, fetchResource, sha256Hex } from "./fetch.js";
+import { defaultSleep, fetchResource, sha256Hex, verifyIntegrity } from "./fetch.js";
 import type {
   AdapterLoadResult,
   AdapterModule,
@@ -112,7 +112,7 @@ export class PackageResourceResolver implements ResourceResolver {
       const memoryResource = this.memoryResources[memoryKey] ?? this.memoryResources[`./${memoryKey}`];
       if (memoryResource) {
         const bytes = await boundedBytes(memoryResource.bytes, maxBytes, controller.signal);
-        await abortable(verifyResourceIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.hashBytes), controller.signal);
+        await abortable(verifyIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.hashBytes), controller.signal);
         return {
           path: memoryKey,
           bytes,
@@ -370,15 +370,6 @@ async function sourceToBytes(source: Exclude<ModelSource, { kind: "file-path" | 
   if (source.kind === "array-buffer" || source.kind === "uint8-array") return boundedBytes(source.bytes, maxBytes, signal);
   if (source.byteLengthHint !== undefined) checkSize(source.byteLengthHint, maxBytes);
   return readBoundedStream(source.stream, maxBytes, signal);
-}
-
-async function verifyResourceIntegrity(bytes: Uint8Array, integrity: string | undefined, hashBytes: HashBytes): Promise<void> {
-  if (!integrity) return;
-  const expected = integrity.replace(/^sha256-/iu, "").toLowerCase();
-  const actual = (await hashBytes(bytes)).toLowerCase();
-  if (actual !== expected) {
-    throw new Error("Model resource integrity check failed");
-  }
 }
 
 const defaultFetch: RuntimeFetch = (input, init) => {

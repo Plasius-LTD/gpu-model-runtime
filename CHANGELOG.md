@@ -16,7 +16,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Fixed**
-  - (placeholder)
+  - Preserve case-sensitive base64 SHA-256 integrity for streamed and related resources; accept cross-realm Uint8Array chunks without weakening byte ceilings, copy ownership or wrong-type rejection.
 
 - **Security**
   - (placeholder)

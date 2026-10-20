@@ -1,5 +1,11 @@
 import { DEFAULT_MODEL_MAX_BYTES } from "./types.js";
 
+// The intrinsic getter identifies the actual typed-array element kind across
+// realms, without trusting a producer's constructor or Symbol.toStringTag.
+const typedArrayKind = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype), Symbol.toStringTag,
+)?.get;
+
 /** Non-retryable acquisition failure; never contains a source URI or provider error. */
 export class ModelResourceTooLargeError extends Error {
   readonly code = "MODEL_RESOURCE_TOO_LARGE";
@@ -81,7 +87,7 @@ export async function readBoundedStream(
       const next = await abortable(reader ? reader.read() : iterator!.next(), signal);
       checkAbort(signal);
       if (next.done) break;
-      if (!(next.value instanceof Uint8Array)) throw new TypeError("Model stream chunks must be Uint8Array");
+      if (!ArrayBuffer.isView(next.value) || typedArrayKind?.call(next.value) !== "Uint8Array") throw new TypeError("Model stream chunks must be Uint8Array");
       const chunk = next.value;
       if (chunk.byteLength > maxBytes - length) throw new ModelResourceTooLargeError();
       const required = length + chunk.byteLength;

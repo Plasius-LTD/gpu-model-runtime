@@ -141,12 +141,15 @@ export async function verifyIntegrity(bytes: Uint8Array, integrity: string | und
     return;
   }
 
-  const expected = integrity.replace(/^sha256-/iu, "").toLowerCase();
-  const actualHex = (await hashBytes(bytes)).toLowerCase();
-  const actualBase64 = bytesToBase64(await digestBytes(bytes, hashBytes));
-  if (expected !== actualHex && expected !== actualBase64) {
-    throw new NonRetryableResourceError("Model resource integrity check failed");
+  const expected = integrity.replace(/^sha256-/iu, "");
+  if (/^[0-9a-f]{64}$/iu.test(expected)) {
+    const actualHex = await hashBytes(bytes);
+    if (expected.toLowerCase() === actualHex.toLowerCase()) return;
+  } else if (/^[A-Za-z0-9+/]{43}=$/u.test(expected)) {
+    const actualBase64 = bytesToBase64(await digestBytes(bytes, hashBytes));
+    if (expected === actualBase64) return;
   }
+  throw new NonRetryableResourceError("Model resource integrity check failed");
 }
 
 async function digestBytes(bytes: Uint8Array, hashBytes: HashBytes): Promise<Uint8Array> {
