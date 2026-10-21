@@ -9,7 +9,7 @@ const expectedHash = digest(new Uint8Array(expectedBytes));
 
 describe("owned in-memory acquisition", () => {
   it.each(["array-buffer", "uint8-array", "blob", "buffer-slice", "foreign-buffer", "foreign-array", "shared-array"])("keeps %s identity stable while caller storage changes during hashing", async kind => {
-    let owner = new Uint8Array(expectedBytes);
+    let owner: Uint8Array = new Uint8Array(expectedBytes);
     let source: ModelSource;
     if (kind === "foreign-buffer" || kind === "foreign-array") {
       const foreign = runInNewContext("new Uint8Array([1,2,3])") as Uint8Array;
