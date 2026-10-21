@@ -17,11 +17,14 @@ format-specific parsing remains in lazy adapter packages.
    extension, and magic-byte sniffing. Only the selected registration is
    dynamically imported.
 4. The runtime returns a cached result when the content hash, format, and
-   adapter options match. Otherwise it calls the adapter on the main path or
-   through an injected worker dispatcher.
+   adapter options, acquisition ceiling, diagnostic mode and effective execution
+   match. Otherwise it calls the adapter on the main path or through an injected
+   worker dispatcher.
 5. Adapters return generic canonical and optional renderer-ready values. The
-   future `@plasius/gpu-model-core` package provides the concrete canonical
-   types without changing the runtime orchestration API.
+   published `@plasius/gpu-model-core@0.6.0` dependency supplies canonical IO,
+   provenance, diagnostic-mode and document contracts. The generic runtime API
+   remains compatible; its narrower acquisition port does not replace the core
+   conversion registry or implement format parsing.
 
 ## Failure behavior
 
@@ -62,3 +65,20 @@ checks, rejects spoofed/non-byte views, and keeps incremental limits/copy owners
 Fetched and memory resources share encoding-aware SHA-256 verification: hex is
 case-insensitive and padded base64 is case-sensitive. The documented minor release
 must include these regressions before downstream broad-import adoption.
+
+## Canonical bootstrap completion (runtime#1)
+
+ADR-0010 replaces the temporary unpublished-core accommodation in ADR-0005.
+The runtime extends core ModelSource only with optional package resources. Core
+factories/evaluator remain adapter-owned; no duplicate validator or repair policy
+is introduced. Main/worker execution is decided and mandatory support validated
+before cache access. Cache identity includes mode and execution, preserving strict
+rejection after tolerant/forensic loads and worker requirements across shared
+caches. Auto/always share worker results only when both actually select a worker.
+
+Tests use a genuine core-verified point-mesh document and real diagnostic policy,
+plus independent regression cases for mode isolation and worker cache behavior.
+Full acquisition/residency suites, changed-file LCOV, frozen installation, dual
+module/declaration consumers and approved exact-main CI/CD remain release gates.
+This scoped runtime bootstrap does not complete parent Feature1149's downstream
+adapter/renderer adoption or the separate PVOX loading Task11.

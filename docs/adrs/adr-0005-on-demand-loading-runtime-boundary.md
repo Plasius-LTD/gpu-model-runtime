@@ -69,3 +69,13 @@ cache or source data migration is required.
 [ADR-0008](adr-0008-bounded-source-acquisition.md) adds finite acquisition ceilings
 and local-stream deadlines to this existing owning boundary. It does not move
 format or aggregate decoded-resource ownership into the runtime.
+
+
+## Published-core refinement
+
+[ADR-0010](adr-0010-published-core-and-policy-cache.md) supersedes the historical
+unpublished-core accommodation. Published core0.6.0 now supplies canonical source,
+provenance, diagnostic-mode and document types; runtime extends the source with
+package resources and retains generic acquisition/worker ports. Canonical
+validation and repair policy remain in core. Cache identity also includes mode
+and actual execution so cache hits preserve the requested policy.

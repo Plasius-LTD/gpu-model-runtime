@@ -7,8 +7,21 @@ This repository is the dedicated package boundary defined by ADR 0094.
 
 The runtime owns orchestration only. Canonical model documents, diagnostics, and
 renderer-specific data remain owned by the corresponding `@plasius/gpu-model-*`
-packages and are carried through generic type parameters until the core package
-is released.
+packages. Published `@plasius/gpu-model-core@0.6.0` supplies source, provenance,
+diagnostic-mode and canonical document types; runtime `ModelSource` adds the
+optional package-resource descriptor. Existing explicit generic model types
+remain supported. `ModelAdapter`, `AdapterLoadResult` and `ModelLoadResult` now
+have `GpuModelDocument` as their optional type default. `loadModel<T>()` remains
+explicitly generic; an unannotated call still returns an unknown model.
+
+Core imports in runtime source are type-only, so importing this runtime does not
+execute core validators or eagerly load concrete adapters. Adapters own canonical
+validation and strict/tolerant/forensic policy through the core factories and
+evaluator. Runtime returns the resulting document and diagnostic ledger without
+rewriting them. Its `ModelAdapter` is an acquisition/worker port, distinct from
+core's inspect/load/export/validate conversion interface: bind a format adapter's
+factory to the provided resource resolver and map its result in that port;
+do not cast a format module directly to a runtime adapter.
 
 ## Runtime behavior
 
@@ -25,23 +38,28 @@ is released.
   statuses, abort signals, optional byte ranges, response content types, and
   SHA-256 integrity checks.
 - `MemoryModelCache` keys loaded output by content hash, adapter format, and
-  stable adapter options and acquisition byte ceiling. Call `runtime.invalidate()` to clear all entries or
-  entries for one content hash.
+  stable adapter options, acquisition byte ceiling, diagnostic mode and actual
+  execution path. Call `runtime.invalidate()` to clear all entries or entries
+  for one content hash.
 - Worker execution is opt-in through a `WorkerDispatcher`; consumers that do
   not provide one stay on the main execution path.
 
 Example:
 
 ```ts
+import { AdapterRegistry, ModelRuntime, type GpuModelDocument } from "@plasius/gpu-model-runtime";
+
 const registry = new AdapterRegistry().register({
   formatId: "gltf",
   extensions: ["gltf", "glb"],
   sniff: ({ bytes }) => bytes[0] === 0x67,
-  load: () => import("@plasius/gpu-model-gltf"),
+  // A consumer-owned bridge implementing this runtime's ModelAdapter port.
+  // Its factory binds the format adapter to input.resourceResolver.
+  load: () => import("./model-adapters/gltf.js"),
 });
 
 const runtime = new ModelRuntime({ registry });
-const result = await runtime.loadModel({
+const result = await runtime.loadModel<GpuModelDocument>({
   kind: "blob-storage-url",
   url: "https://storage.example.invalid/models/scene.glb?<signed-url>",
 });
@@ -49,6 +67,22 @@ const result = await runtime.loadModel({
 result.canonicalModel;
 result.rendererReady;
 ```
+
+A tolerant or forensic cache entry cannot satisfy a strict request. Mandatory
+worker support is checked before cache lookup; main and worker results have
+separate keys, while `auto` and `always` can share a result when both select the
+worker. Adapters and dispatchers injected by the consumer are trusted execution
+ports; they must honor signals, enforce their own parsing/decoding budgets, and
+return core-validated documents. This package does not supply a Worker script or
+serialize resolver functions across threads. A dispatcher binds its own RPC and
+resource-resolution transport.
+
+New cache keys intentionally cold-start existing external caches. This is a
+patch-compatible policy fix with additive canonical type defaults and one exact
+published dependency (core 0.6.0, previously absent); no concrete adapter is added.
+The new dependency has no runtime dependencies and requires the already-supported
+Node 24. Installed package and strict ESM/CJS declaration checks verify the
+published boundary. Do not use local workspace links.
 
 ## Bounded source acquisition
 

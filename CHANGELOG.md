@@ -9,17 +9,11 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [Unreleased]
 
-- **Added**
-  - (placeholder)
+### Added
+- Reuse published core 0.6.0 source/provenance/mode contracts and expose canonical document/diagnostic types with optional canonical adapter/result type defaults; preserve explicit generic consumers and lazy format loading.
 
-- **Changed**
-  - (placeholder)
-
-- **Fixed**
-  - (placeholder)
-
-- **Security**
-  - (placeholder)
+### Fixed
+- Separate cached loads by strict/tolerant/forensic mode and actual main/worker execution. Check mandatory worker support before cache access so a cached model cannot bypass strict rejection or required worker execution.
 
 ## [0.3.0] - 2026-10-20
 
