@@ -111,6 +111,15 @@ underestimate never disables actual-byte checks. Hashes still cover the admitted
 bytes, including a returned range. Limits apply to decoded Fetch body bytes;
 compressed Content-Length is only an additional early check.
 
+In-memory ArrayBuffer and Uint8Array entrypoints and related package resources
+are copied into runtime-owned storage after the byte ceiling is checked. Hashing,
+integrity verification and adapters use that same snapshot, so changing the
+caller's backing storage while asynchronous checks run cannot change the admitted
+resource. A typed view copies only its declared range, including Node Buffer and
+cross-realm views. Blob/stream ownership remains unchanged. This adds one bounded
+copy for ArrayBuffer inputs; acquisition does not retain the caller's backing
+buffer or allocate a second owned snapshot for typed-array inputs.
+
 Integrity accepts a 64-character SHA-256 hex digest (case-insensitive) or its
 standard padded base64 encoding (case-sensitive), with an optional `sha256-`
 prefix. The same verifier applies to fetched and in-memory package resources;
