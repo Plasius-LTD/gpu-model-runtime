@@ -216,7 +216,23 @@ export class ModelRuntime {
       fileName: input.fileName,
       sourceKind: source.kind,
     }, options.formatId);
-    const cacheKey = createModelCacheKey(input.contentHash, adapter.formatId, { adapterOptions: options.adapterOptions ?? null, maxBytes: byteLimit(options.fetchPolicy?.maxBytes) });
+    const workerMode = options.worker?.mode ?? "auto";
+    const canUseWorker = workerMode !== "never" && Boolean(this.workerDispatcher) && Boolean(adapter.supportsWorker);
+    if (workerMode === "always" && !canUseWorker) {
+      throw new Error(`Adapter ${adapter.formatId} does not support the requested worker execution`);
+    }
+    const context = {
+      signal: options.signal ?? new AbortController().signal,
+      mode: options.mode ?? "strict",
+      execution: canUseWorker ? "worker" as const : "main" as const,
+      adapterOptions: options.adapterOptions ?? null,
+    };
+    const cacheKey = createModelCacheKey(input.contentHash, adapter.formatId, {
+      adapterOptions: context.adapterOptions,
+      maxBytes: byteLimit(options.fetchPolicy?.maxBytes),
+      mode: context.mode,
+      execution: context.execution,
+    });
     const useCache = options.useCache ?? true;
     if (useCache) {
       const cached = await this.cache.get<ModelLoadResult<TCanonicalModel, TRendererReady>>(cacheKey);
@@ -225,13 +241,7 @@ export class ModelRuntime {
       }
     }
 
-    const context = {
-      signal: options.signal ?? new AbortController().signal,
-      mode: options.mode ?? "strict",
-      execution: "main" as const,
-      adapterOptions: options.adapterOptions ?? null,
-    };
-    const adapterResult = await this.loadWithExecution<TCanonicalModel, TRendererReady>(adapter, input, context, options);
+    const adapterResult = await this.loadWithExecution<TCanonicalModel, TRendererReady>(adapter, input, context);
     const result: ModelLoadResult<TCanonicalModel, TRendererReady> = {
       ...adapterResult,
       contentHash: input.contentHash,
@@ -251,14 +261,8 @@ export class ModelRuntime {
     adapter: ModelAdapter<TCanonicalModel, TRendererReady>,
     input: ResolvedModelSource,
     context: Parameters<ModelAdapter<TCanonicalModel, TRendererReady>["load"]>[1],
-    options: LoadModelOptions,
   ): Promise<AdapterLoadResult<TCanonicalModel, TRendererReady>> {
-    const workerMode = options.worker?.mode ?? "auto";
-    const canUseWorker = workerMode !== "never" && Boolean(this.workerDispatcher) && Boolean(adapter.supportsWorker);
-    if (workerMode === "always" && !canUseWorker) {
-      throw new Error(`Adapter ${adapter.formatId} does not support the requested worker execution`);
-    }
-    if (canUseWorker && this.workerDispatcher) {
+    if (context.execution === "worker" && this.workerDispatcher) {
       const workerRequest: WorkerLoadRequest = {
         formatId: adapter.formatId,
         input,

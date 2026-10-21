@@ -1,21 +1,16 @@
+import type {
+  GpuModelDiagnosticMode, GpuModelDocument,
+  ModelSource as CoreModelSource, ModelProvenance as CoreModelProvenance,
+} from "@plasius/gpu-model-core";
+
+export type { GpuModelDiagnosticMode, GpuModelDocument, GpuModelConversionDiagnostic } from "@plasius/gpu-model-core";
+
 /** Default ceiling per entrypoint or related resource: 64 MiB. */
 export const DEFAULT_MODEL_MAX_BYTES = 64 * 1024 * 1024;
 
-export type ModelSourceKind =
-  | "file-path"
-  | "url"
-  | "blob-storage-url"
-  | "blob"
-  | "array-buffer"
-  | "uint8-array"
-  | "stream";
-
-export type ModelProvenance = Readonly<{
-  sourceId?: string;
-  sourceSystem?: string;
-  acquiredAt?: string;
-  licenseHint?: string;
-}>;
+/** Canonical source and policy contracts stay owned by the published core. */
+export type ModelSourceKind = CoreModelSource["kind"];
+export type ModelProvenance = CoreModelProvenance;
 
 export type ModelResourceInput = Readonly<{
   bytes: ArrayBuffer | Blob | Uint8Array;
@@ -29,64 +24,8 @@ export type ModelPackage = Readonly<{
   resources?: Readonly<Record<string, ModelResourceInput>>;
 }>;
 
-export type ModelSource =
-  | Readonly<{
-      kind: "file-path";
-      path: string;
-      mimeTypeHint?: string;
-      fileNameHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "url";
-      url: string;
-      headers?: Readonly<Record<string, string>>;
-      mimeTypeHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "blob-storage-url";
-      url: string;
-      credentialMode?: "anonymous" | "signed" | "runtime-resolved";
-      mimeTypeHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "blob";
-      blob: Blob;
-      fileNameHint?: string;
-      mimeTypeHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "array-buffer";
-      bytes: ArrayBuffer;
-      fileNameHint?: string;
-      mimeTypeHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "uint8-array";
-      bytes: Uint8Array;
-      fileNameHint?: string;
-      mimeTypeHint?: string;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>
-  | Readonly<{
-      kind: "stream";
-      stream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>;
-      fileNameHint?: string;
-      mimeTypeHint?: string;
-      byteLengthHint?: number;
-      package?: ModelPackage;
-      provenance?: ModelProvenance;
-    }>;
+/** Runtime acquisition extends canonical IO with package-resource resolution. */
+export type ModelSource = CoreModelSource & Readonly<{ package?: ModelPackage }>;
 
 export type ResourceReference = Readonly<{
   path: string;
@@ -156,18 +95,18 @@ export type SniffInput = Readonly<{
 
 export type AdapterLoadContext = Readonly<{
   signal: AbortSignal;
-  mode: "strict" | "tolerant" | "forensic";
+  mode: GpuModelDiagnosticMode;
   execution: "main" | "worker";
   adapterOptions: unknown;
 }>;
 
-export type AdapterLoadResult<TCanonicalModel, TRendererReady = unknown> = Readonly<{
+export type AdapterLoadResult<TCanonicalModel = GpuModelDocument, TRendererReady = unknown> = Readonly<{
   canonicalModel: TCanonicalModel;
   rendererReady?: TRendererReady;
   diagnostics?: readonly unknown[];
 }>;
 
-export interface ModelAdapter<TCanonicalModel, TRendererReady = unknown> {
+export interface ModelAdapter<TCanonicalModel = GpuModelDocument, TRendererReady = unknown> {
   readonly formatId: string;
   readonly supportsWorker?: boolean;
   sniff(input: SniffInput): number | boolean;
@@ -210,7 +149,7 @@ export type ModelCache = Readonly<{
 
 export type LoadModelOptions = Readonly<{
   signal?: AbortSignal;
-  mode?: "strict" | "tolerant" | "forensic";
+  mode?: GpuModelDiagnosticMode;
   adapterOptions?: unknown;
   formatId?: string;
   fetchPolicy?: FetchPolicy;
@@ -221,7 +160,7 @@ export type LoadModelOptions = Readonly<{
   }>;
 }>;
 
-export type ModelLoadResult<TCanonicalModel, TRendererReady = unknown> = Readonly<{
+export type ModelLoadResult<TCanonicalModel = GpuModelDocument, TRendererReady = unknown> = Readonly<{
   canonicalModel: TCanonicalModel;
   rendererReady?: TRendererReady;
   diagnostics?: readonly unknown[];
