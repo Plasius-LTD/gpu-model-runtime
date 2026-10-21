@@ -36,6 +36,20 @@ admit actual Uint8Array views across realms. `instanceof` rejects valid foreign
 views, and constructor names or Object.prototype.toString tags can be spoofed.
 All admitted chunks still copy into the same bounded, runtime-owned storage.
 
+Task32 (2026-10-21, dependent FBX23 under Feature1151) extends that existing
+ownership guarantee to non-stream memory entrypoints and related package
+resources. ArrayBuffer construction alone creates an aliased view. After size
+admission, copy its byte view into one owned Uint8Array before awaiting any hash
+or integrity provider. Typed-array inputs keep their existing single-copy/range
+behavior, including foreign views, Node Buffer slices and shared-backed byte
+views. Blob/stream behavior, public types, limits and cancellation stay unchanged.
+This corrects a stamped-source/adapter-byte mismatch during caller mutation;
+it does not introduce a parser, cache policy, dependency or new rollout mechanism.
+Tests fail first for local/foreign ArrayBuffers and verified related resources,
+then pass alongside typed-array/Blob compatibility cases. Publish a patch through
+the existing main/cd.yml/production route before FBX consumes it. Caller-owned
+ArrayBuffers now incur one bounded copy instead of retaining their backing store.
+
 Parse integrity as 64-character hex or standard padded base64 after the optional
 sha256 prefix. Only hex is case-normalized; base64 retains its exact case. Reuse
 one verifier for fetched and memory package resources. Hex uses the injected hash;

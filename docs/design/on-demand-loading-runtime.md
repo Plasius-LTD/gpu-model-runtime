@@ -54,6 +54,15 @@ before materialization, and streamed data is checked before retention. Local
 source reads receive the same bounded cancellation/deadline behavior as HTTP.
 Injected file readers receive the budget and own enforcement during their I/O.
 
+Runtime32 extends the same byte ownership boundary to ArrayBuffer entrypoints and
+related in-memory resources. After admission, runtime takes one owned byte
+snapshot before asynchronous hashing/integrity checks; adapter bytes and identity
+evidence refer to that same snapshot even if caller backing storage changes.
+Typed arrays retain range-correct single-copy behavior, including cross-realm,
+shared-backed and Node Buffer views. Blob/stream behavior and public policy stay
+unchanged. Regression tests mutate the caller's storage while a hash is pending
+and verify both resolved bytes and integrity/content hash.
+
 The adapter still owns aggregate model and decoded-resource quotas; runtime
 residency owns retained CPU/GPU accounting. The adapter must consume a verified
 published runtime version, with runtime#7's release prerequisites resolved first.

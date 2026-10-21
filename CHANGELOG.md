@@ -16,7 +16,9 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Fixed**
-  - (placeholder)
+  - Snapshot caller-owned ArrayBuffer entrypoints and memory-package resources
+    before asynchronous hashing/integrity checks so adapter bytes match their
+    admitted identity even when the caller changes its own backing storage.
 
 - **Security**
   - (placeholder)

@@ -113,5 +113,7 @@ export async function boundedBytes(input: ArrayBuffer | Blob | Uint8Array, maxBy
   checkAbort(signal);
   checkSize(input instanceof Blob ? input.size : input.byteLength, maxBytes);
   if (input instanceof Blob) return readBoundedStream(input.stream(), maxBytes, signal);
-  return new Uint8Array(input);
+  // ArrayBuffer construction creates a view. Snapshot before async integrity or
+  // hash work, and copy only a supplied view's range without invoking its slice.
+  return new Uint8Array(ArrayBuffer.isView(input) ? input : new Uint8Array(input));
 }
