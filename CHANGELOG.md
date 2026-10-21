@@ -9,6 +9,20 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [Unreleased]
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.3.1] - 2026-10-21
+
 ### Added
 - Reuse published core 0.6.0 source/provenance/mode contracts and expose canonical document/diagnostic types with optional canonical adapter/result type defaults; preserve explicit generic consumers and lazy format loading.
 
@@ -485,7 +499,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ---
 
-[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.3.1...HEAD
 [1.0.0]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.0
 [1.0.13]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.13
 [1.0.17]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.17
@@ -528,3 +542,4 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 [0.2.4]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.4
 [0.2.5]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.2.5
 [0.3.0]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.3.0
+[0.3.1]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.3.1
