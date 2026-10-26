@@ -22,6 +22,8 @@ export type ModelPackage = Readonly<{
   entrypoint?: string;
   baseUrl?: string;
   resources?: Readonly<Record<string, ModelResourceInput>>;
+  /** Closed packages refuse aliases, missing files and all network fallback. */
+  resourcePolicy?: "closed";
 }>;
 
 /** Runtime acquisition extends canonical IO with package-resource resolution. */

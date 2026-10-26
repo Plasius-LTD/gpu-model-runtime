@@ -67,6 +67,8 @@ export class AdapterRegistry {
 
 export class PackageResourceResolver implements ResourceResolver {
   private readonly parentSignal?: AbortSignal;
+  private readonly closed: boolean;
+  private readonly packageDirectory: string;
   private readonly memoryResources: Readonly<Record<string, ModelResourceInput>>;
   private readonly baseUrl?: string;
   private readonly sourceKind: ModelSourceKind;
@@ -90,6 +92,9 @@ export class PackageResourceResolver implements ResourceResolver {
     blobStorageUrlResolver?: RuntimeDependencies["blobStorageUrlResolver"];
   }>) {
     this.parentSignal = options.signal;
+    this.closed = options.package?.resourcePolicy === "closed";
+    const entrypoint = options.package?.entrypoint ?? "";
+    this.packageDirectory = entrypoint.slice(0, entrypoint.lastIndexOf("/") + 1);
     this.sourceKind = options.sourceKind;
     this.baseUrl = options.package?.baseUrl ?? options.baseUrl;
     this.memoryResources = options.package?.resources ?? {};
@@ -108,20 +113,31 @@ export class PackageResourceResolver implements ResourceResolver {
     try {
       checkAbort(controller.signal);
       const requested = typeof reference === "string" ? { path: reference } : reference;
-      const memoryKey = normalizePackagePath(requested.path);
+      const packagePath = this.closed ? this.packageDirectory + requested.path : requested.path;
+      if (this.closed && (!Object.hasOwn(this.memoryResources, packagePath) || requested.path !== normalizePackagePath(requested.path))) {
+        throw new Error("Resource is not declared in the closed model package");
+      }
+      const memoryKey = normalizePackagePath(packagePath);
       const memoryResource = this.memoryResources[memoryKey] ?? this.memoryResources[`./${memoryKey}`];
       if (memoryResource) {
         const bytes = await boundedBytes(memoryResource.bytes, maxBytes, controller.signal);
-        await abortable(verifyIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.hashBytes), controller.signal);
+        if (this.closed && requested.contentType !== undefined && requested.contentType !== memoryResource.contentType) {
+          throw new Error("Resource content type differs from the closed model package");
+        }
+        if (this.closed) {
+          await abortable(verifyIntegrity(bytes, memoryResource.integrity, sha256Hex), controller.signal);
+        }
+        await abortable(verifyIntegrity(bytes, requested.integrity ?? memoryResource.integrity, this.closed ? sha256Hex : this.hashBytes), controller.signal);
         return {
           path: memoryKey,
           bytes,
           contentType: requested.contentType ?? memoryResource.contentType,
-          contentHash: await abortable(this.hashBytes(bytes), controller.signal),
+          contentHash: await abortable(this.closed ? sha256Hex(bytes) : this.hashBytes(bytes), controller.signal),
           rangeSupported: false,
         };
       }
 
+      if (this.closed) throw new Error("Resource is not declared in the closed model package");
       const url = await abortable(this.resolveUrl(requested.path), controller.signal);
       checkAbort(controller.signal);
       const result = await fetchResource(url, {
