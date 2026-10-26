@@ -276,9 +276,11 @@ export class ModelRuntime {
     };
     if (useCache) {
       checkAbort(signal);
-      await abortable(this.cache.set(cacheKey, result), signal);
+      // Host writes can finish after cancellation. Retain successful writes in
+      // invalidation bookkeeping independently of the caller's aborted wait.
+      const write = this.cache.set(cacheKey, result).then(() => { this.cacheKeys.add(cacheKey); });
+      await abortable(write, signal);
       checkAbort(signal);
-      this.cacheKeys.add(cacheKey);
     }
     return result;
   }

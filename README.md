@@ -292,7 +292,8 @@ signal after source acquisition, adapter registration and cache reads, immediate
 before parser/worker execution, and before cache writes. A registration that
 settles after cancellation cannot start parsing or dispatch a worker; a late
 parser result cannot start a cache write. Waiting for an already-started host
-cache write can be cancelled, but its side effects remain host-owned. The same
+cache write can be cancelled, but its side effects remain host-owned. Successful
+late writes remain tracked for subsequent `invalidate(contentHash)` calls. The same
 signal checks apply to legacy `loadModel` without changing its cache keys or
 acquisition timeout policy. There are no retries. Errors are fresh,
 value-free `ModelPackageLoadError` instances with invalid-input, limit-exceeded,

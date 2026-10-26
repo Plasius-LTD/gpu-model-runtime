@@ -55,6 +55,8 @@ Reuse the existing abortable/checkAbort primitives for source, registry, cache
 and execution waits. A late producer result cannot initiate a cache write.
 Already-invoked host cache writes and synchronous parsers retain host-owned side
 effects/termination; cancellation stops waiting without claiming to reverse them.
+Successful late cache writes still register their keys independently of the
+cancelled wait, so subsequent content-hash invalidation can remove them.
 Legacy cache identity and acquisition timeout policy remain unchanged.
 
 Fixed fresh `ModelPackageLoadError` codes contain no caller/parser exception,

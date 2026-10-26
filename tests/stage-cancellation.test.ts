@@ -62,6 +62,24 @@ describe("runtime cancellation stage boundaries", () => {
     expect(write).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps a successful late host cache write invalidatable after cancellation", async () => {
+    const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+    const cache = new MemoryModelCache(); const store = cache.set.bind(cache);
+    const write = vi.spyOn(cache, "set").mockImplementation(async (key, value) => {
+      entered.resolve(); await gate.promise; await store(key, value);
+    });
+    const parse = vi.fn(async () => ({ canonicalModel: [1] }));
+    const runtime = new ModelRuntime({ cache, registry: registry(parse), dependencies: { hashBytes: async () => "fixture-hash" } });
+    const parent = new AbortController();
+    const pending = runtime.loadModel(source(), { signal: parent.signal }).catch((error: unknown) => error);
+    await entered.promise; parent.abort();
+    expect(await pending).toMatchObject({ name: "AbortError" });
+    gate.resolve(); await write.mock.results[0]!.value;
+    await runtime.invalidate("fixture-hash");
+    expect((await runtime.loadModel(source())).fromCache).toBe(false);
+    expect(parse).toHaveBeenCalledTimes(2);
+  });
+
   it("retains ordinary adapter failures and healthy cache reuse", async () => {
     const failure = new Error("synthetic adapter failure");
     await expect(new ModelRuntime({ registry: registry(async () => { throw failure; }) }).loadModel(source())).rejects.toBe(failure);

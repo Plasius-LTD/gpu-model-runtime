@@ -23,6 +23,7 @@ source/registration/cache reads and before parser/worker or cache writes prevent
 new work after cancellation. Late parser results cannot start cache writes;
 already-started host cache side effects and synchronous CPU interruption remain
 host-owned. Healthy legacy cache identity/reuse stays compatible.
+Successful late host writes remain tracked for later content-hash invalidation.
 Real published format adapters are qualified separately as packed/public consumer
 integration. Unit fixtures do not imply six-format renderer/CAD conformance.
 
