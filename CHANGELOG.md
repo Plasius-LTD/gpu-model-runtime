@@ -9,6 +9,8 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [Unreleased]
 
+- Add opt-in integrity-qualified exported-model package loading with closed resource resolution, immutable input snapshots, resource-specific cache identity, cancellation and bounded errors (Feature1153/runtime35).
+
 - **Added**
   - (placeholder)
 

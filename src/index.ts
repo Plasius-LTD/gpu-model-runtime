@@ -15,3 +15,5 @@ export const packageBootstrap = Object.freeze({
 export * from "./model-residency.js";
 
 export { ModelResourceTooLargeError } from "./bytes.js";
+
+export * from "./package-load.js";

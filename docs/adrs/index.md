@@ -10,3 +10,4 @@
 - [ADR-0008: Bounded Source Acquisition](./adr-0008-bounded-source-acquisition.md)
 - [ADR-0009: Quarantined Self-Hosted CI](./adr-0009-quarantined-self-hosted-ci.md)
 - [ADR-0010: Published Core Contracts and Policy-Aware Load Caching](./adr-0010-published-core-and-policy-cache.md)
+- [ADR-0011: Integrity-Qualified Model Package Loading](./adr-0011-integrity-qualified-model-package-loading.md)

@@ -258,6 +258,55 @@ npm run build
 npm pack --dry-run
 ```
 
+## Load an integrity-qualified exported package
+
+`loadModelPackage(runtime, { manifest, packageManifest, files }, options)` is an
+opt-in complete-inventory loader. It reuses published asset-contracts0.8.3
+qualification before parsing the declared entrypoint. Each file is
+`{ path, bytes: Uint8Array, contentType }`; the manifest supplies exact lengths,
+SHA256 digests and roles. Hosts acquire the files through their existing bounded,
+authorized transport. This API does not extract archives or fetch inventory URLs.
+
+```ts
+import { loadModelPackage } from "@plasius/gpu-model-runtime";
+
+// runtime already has the desired lazy format adapter registered.
+const loaded = await loadModelPackage(runtime, exportedPackage, {
+  signal: abortController.signal, timeoutMs: 10_000, mode: "strict",
+});
+```
+
+The loader copies metadata/byte ranges before its first await and rejects the
+whole package before adapter use if any declared file is missing or invalid.
+Related resources resolve only exact declared paths relative to the entrypoint directory, with mandatory native digest
+checks; URL/missing-file fallback and content-type overrides are refused. Each
+read returns an independent byte array. No failure silently retries the same
+invalid package through legacy loading.
+
+Limits (`MODEL_PACKAGE_LOAD_LIMITS`): 1,024 files, 16 MiB per file, 64 MiB total,
+65,536 metadata values/16 levels/2,048 characters per metadata string; all byte
+budgets checked before copies. Default total deadline30s, maximum60s. Cancellation
+also stops waiting for uncooperative asynchronous adapters; hosts own worker/CPU
+termination for synchronous parsing. There are no retries. Errors are fresh,
+value-free `ModelPackageLoadError` instances with invalid-input, limit-exceeded,
+package-invalid, load-failed, aborted or deadline-exceeded codes.
+
+The new path does not read/write the legacy entrypoint-only cache. Its returned
+`model-package-v1:<closure SHA256>:<policy key>` cacheKey binds sorted descriptor
+identities and asset/version/entrypoint; retain the full key for host caches.
+Legacy loadModel and its cache/source kinds are unchanged. The contracts module
+is imported dynamically only when this API is called.
+
+Hosts evaluate the existing remotely stored `gpu.model.conversion.enabled` flag.
+Disabled/unavailable/rollback selects their existing compatible consumer route;
+mandatory integrity never becomes optional. No capability or env rollout gate is
+introduced. See [ADR0011](docs/adrs/adr-0011-integrity-qualified-model-package-loading.md)
+and the [design](docs/design/qualified-model-packages.md). This boundary does not
+certify a parser, renderer, promotion or human approval. Producer and renderer
+bridge must share their required core instance/module format; otherwise reverify
+transferred documents in the receiving core using a trusted verification port,
+as the bridge documents. Do not cast or bypass a private verification brand.
+
 ## License
 
 Apache-2.0. See LICENSE, SECURITY.md, and the files under legal/.
