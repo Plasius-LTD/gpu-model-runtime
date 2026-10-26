@@ -287,7 +287,15 @@ Limits (`MODEL_PACKAGE_LOAD_LIMITS`): 1,024 files, 16 MiB per file, 64 MiB total
 65,536 metadata values/16 levels/2,048 characters per metadata string; all byte
 budgets checked before copies. Default total deadline30s, maximum60s. Cancellation
 also stops waiting for uncooperative asynchronous adapters; hosts own worker/CPU
-termination for synchronous parsing. There are no retries. Errors are fresh,
+termination for synchronous parsing. Runtime stage boundaries check the propagated
+signal after source acquisition, adapter registration and cache reads, immediately
+before parser/worker execution, and before cache writes. A registration that
+settles after cancellation cannot start parsing or dispatch a worker; a late
+parser result cannot start a cache write. Waiting for an already-started host
+cache write can be cancelled, but its side effects remain host-owned. Successful
+late writes remain tracked for subsequent `invalidate(contentHash)` calls. The same
+signal checks apply to legacy `loadModel` without changing its cache keys or
+acquisition timeout policy. There are no retries. Errors are fresh,
 value-free `ModelPackageLoadError` instances with invalid-input, limit-exceeded,
 package-invalid, load-failed, aborted or deadline-exceeded codes.
 

@@ -16,6 +16,14 @@ Tests derive from Task35 acceptance: good complete packages, reordered inventory
 mutated source/returned buffers, bad paths/types/lengths/digests/entrypoints,
 missing/extra files, unlisted network references, cache collisions, exception and
 signal containment, metadata/file ceilings, cancellation and hung adapters.
+Cancellation tests hold adapter registration until after abort/deadline rejection,
+then observe the actual runtime continuation and require zero parser/worker calls.
+Runtime stage waits respect the propagated signal; checks after asynchronous
+source/registration/cache reads and before parser/worker or cache writes prevent
+new work after cancellation. Late parser results cannot start cache writes;
+already-started host cache side effects and synchronous CPU interruption remain
+host-owned. Healthy legacy cache identity/reuse stays compatible.
+Successful late host writes remain tracked for later content-hash invalidation.
 Real published format adapters are qualified separately as packed/public consumer
 integration. Unit fixtures do not imply six-format renderer/CAD conformance.
 

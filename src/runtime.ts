@@ -225,20 +225,24 @@ export class ModelRuntime {
     source: ModelSource,
     options: LoadModelOptions = {},
   ): Promise<ModelLoadResult<TCanonicalModel, TRendererReady>> {
-    const input = await this.resolveSource(source, options);
-    const adapter = await this.registry.resolve<TCanonicalModel, TRendererReady>({
+    const signal = options.signal ?? new AbortController().signal;
+    checkAbort(signal);
+    const input = await abortable(this.resolveSource(source, options), signal);
+    checkAbort(signal);
+    const adapter = await abortable(this.registry.resolve<TCanonicalModel, TRendererReady>({
       bytes: input.bytes,
       contentType: input.contentType,
       fileName: input.fileName,
       sourceKind: source.kind,
-    }, options.formatId);
+    }, options.formatId), signal);
+    checkAbort(signal);
     const workerMode = options.worker?.mode ?? "auto";
     const canUseWorker = workerMode !== "never" && Boolean(this.workerDispatcher) && Boolean(adapter.supportsWorker);
     if (workerMode === "always" && !canUseWorker) {
       throw new Error(`Adapter ${adapter.formatId} does not support the requested worker execution`);
     }
     const context = {
-      signal: options.signal ?? new AbortController().signal,
+      signal,
       mode: options.mode ?? "strict",
       execution: canUseWorker ? "worker" as const : "main" as const,
       adapterOptions: options.adapterOptions ?? null,
@@ -250,14 +254,18 @@ export class ModelRuntime {
       execution: context.execution,
     });
     const useCache = options.useCache ?? true;
+    checkAbort(signal);
     if (useCache) {
-      const cached = await this.cache.get<ModelLoadResult<TCanonicalModel, TRendererReady>>(cacheKey);
+      const cached = await abortable(this.cache.get<ModelLoadResult<TCanonicalModel, TRendererReady>>(cacheKey), signal);
+      checkAbort(signal);
       if (cached) {
         return { ...cached, fromCache: true };
       }
     }
 
-    const adapterResult = await this.loadWithExecution<TCanonicalModel, TRendererReady>(adapter, input, context);
+    checkAbort(signal);
+    const adapterResult = await abortable(this.loadWithExecution<TCanonicalModel, TRendererReady>(adapter, input, context), signal);
+    checkAbort(signal);
     const result: ModelLoadResult<TCanonicalModel, TRendererReady> = {
       ...adapterResult,
       contentHash: input.contentHash,
@@ -267,8 +275,12 @@ export class ModelRuntime {
       sourceKind: source.kind,
     };
     if (useCache) {
-      await this.cache.set(cacheKey, result);
-      this.cacheKeys.add(cacheKey);
+      checkAbort(signal);
+      // Host writes can finish after cancellation. Retain successful writes in
+      // invalidation bookkeeping independently of the caller's aborted wait.
+      const write = this.cache.set(cacheKey, result).then(() => { this.cacheKeys.add(cacheKey); });
+      await abortable(write, signal);
+      checkAbort(signal);
     }
     return result;
   }
@@ -278,6 +290,7 @@ export class ModelRuntime {
     input: ResolvedModelSource,
     context: Parameters<ModelAdapter<TCanonicalModel, TRendererReady>["load"]>[1],
   ): Promise<AdapterLoadResult<TCanonicalModel, TRendererReady>> {
+    checkAbort(context.signal);
     if (context.execution === "worker" && this.workerDispatcher) {
       const workerRequest: WorkerLoadRequest = {
         formatId: adapter.formatId,

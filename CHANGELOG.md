@@ -16,7 +16,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
   - (placeholder)
 
 - **Fixed**
-  - (placeholder)
+  - Stop cancelled or expired package loads before later parser/worker stages and prevent late producer results from starting cache writes. Runtime stage waits now respect the supplied signal while preserving healthy cache reuse.
 
 - **Security**
   - (placeholder)
