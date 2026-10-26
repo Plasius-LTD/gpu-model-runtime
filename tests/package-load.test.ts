@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createAssetManifest } from "@plasius/asset-contracts";
 import { AdapterRegistry, ModelRuntime, loadModelPackage, MODEL_PACKAGE_LOAD_LIMITS } from "../src/index.js";
-import type { ModelAdapter, ResolvedModelSource } from "../src/index.js";
+import type { ModelAdapter, ResolvedModelSource, WorkerDispatcher } from "../src/index.js";
 
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function fixture(texture = 9) {
@@ -36,6 +36,30 @@ function setup(load?: ModelAdapter<number[]>["load"]) {
 }
 
 describe("integrity-qualified package loading", () => {
+  it.each([
+    ["abort", "main"], ["abort", "worker"], ["deadline", "main"], ["deadline", "worker"],
+  ] as const)("does not start execution after %s during %s adapter registration", async (cause, execution) => {
+      const registration = Promise.withResolvers<ModelAdapter<number[]>>();
+      const entered = Promise.withResolvers<void>();
+      const parse = vi.fn(async () => ({ canonicalModel: [] }));
+      const dispatch = vi.fn(async () => ({ canonicalModel: [] })) as unknown as WorkerDispatcher["dispatch"];
+      const runtime = new ModelRuntime({ registry: new AdapterRegistry().register({
+        formatId: "fixture", extensions: ["fixture"], load: () => { entered.resolve(); return registration.promise; },
+      }), workerDispatcher: execution === "worker" ? { dispatch } : undefined });
+      const underlying = vi.spyOn(runtime, "loadModel");
+      const parent = new AbortController();
+      const pending = loadModelPackage(runtime, fixture(), {
+        signal: parent.signal, timeoutMs: cause === "deadline" ? 50 : 2000,
+      }).catch((error: unknown) => error);
+      await entered.promise;
+      if (cause === "abort") parent.abort("synthetic-private-reason");
+      expect(await pending).toMatchObject({ code: cause === "abort" ? "aborted" : "deadline-exceeded" });
+      expect(parse).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
+      registration.resolve({ formatId: "fixture", supportsWorker: true, sniff: () => true, load: parse });
+      // Observe the actual runtime continuation, not just the wrapper's early rejection.
+      await Promise.resolve(underlying.mock.results[0]!.value).catch(() => {});
+      expect(parse).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
+  });
   it("loads the declared entrypoint and reloads isolated texture bytes", async () => {
     const { runtime, parse, fetch } = setup();
     const result = await loadModelPackage<number[]>(runtime, fixture());

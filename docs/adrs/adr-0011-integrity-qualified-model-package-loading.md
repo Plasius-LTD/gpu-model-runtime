@@ -47,6 +47,16 @@ hashing and adapter execution. An uncooperative promise cannot hold the caller
 open; hosts still own worker termination/CPU preemption for synchronous parsers.
 No retries or partially accepted output are introduced.
 
+Cancellation is also checked within runtime orchestration at each asynchronous
+stage transition and immediately before parser/worker invocation or cache writes.
+Racing the package wrapper alone is insufficient: late registration could
+otherwise start new execution after the caller has already received a failure.
+Reuse the existing abortable/checkAbort primitives for source, registry, cache
+and execution waits. A late producer result cannot initiate a cache write.
+Already-invoked host cache writes and synchronous parsers retain host-owned side
+effects/termination; cancellation stops waiting without claiming to reverse them.
+Legacy cache identity and acquisition timeout policy remain unchanged.
+
 Fixed fresh `ModelPackageLoadError` codes contain no caller/parser exception,
 path, URI, payload, or abort reason. Input descriptors are inspected without
 calling getters; only private error categories are recognized. JSON snapshot
@@ -78,7 +88,11 @@ upgrade. Qualification uses published packages, never local workspace links.
 
 Unit/integration tests cover pre-parse qualification, mutation isolation, reload,
 closed references, cache isolation, hostile exceptions/signals, budgets, deadline
-and rollout composition. Full coverage/changed-source LCOV, lint/types/build,
+and rollout composition.
+Deferred registration tests observe the underlying runtime continuation after
+abort/deadline in both main and worker modes, rather than asserting only early
+wrapper settlement. Cache-hit/miss and late-parser tests cover later boundaries.
+Full coverage/changed-source LCOV, lint/types/build,
 audit/artifact/pack and actual packed/public ESM/CJS/types/browser checks gate
 normal PR/exact-main CI and main cd.yml/production hosted OIDC publication.
 No site or ACA deployment is part of this standalone package release.
