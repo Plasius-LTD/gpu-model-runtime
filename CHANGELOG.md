@@ -9,6 +9,20 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ## [Unreleased]
 
+- **Added**
+  - (placeholder)
+
+- **Changed**
+  - (placeholder)
+
+- **Fixed**
+  - (placeholder)
+
+- **Security**
+  - (placeholder)
+
+## [0.4.3] - 2026-11-22
+
 - Consume the verified upstream security releases from the weekly dependency rollout; retain existing runtime contracts.
 
 - **Added**
@@ -563,7 +577,7 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 
 ---
 
-[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Plasius-LTD/gpu-model-runtime/compare/v0.4.3...HEAD
 [1.0.0]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.0
 [1.0.13]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.13
 [1.0.17]: https://github.com/Plasius-LTD/schema/releases/tag/v1.0.17
@@ -611,3 +625,4 @@ The format is based on **[Keep a Changelog](https://keepachangelog.com/en/1.1.0/
 [0.4.0]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.4.0
 [0.4.1]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.4.1
 [0.4.2]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.4.2
+[0.4.3]: https://github.com/Plasius-LTD/gpu-model-runtime/releases/tag/v0.4.3
